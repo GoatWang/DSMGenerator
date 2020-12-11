@@ -173,16 +173,22 @@ def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, colors=None, figsize=(30
         ax.plot((kp1_pt[0], kp2_pt[0]), (kp1_pt[1], kp2_pt[1]), c=c, linewidth=0.5)
     plt.show()
 
-def filter_tie_points_by_PQ_dist(aerotri_params1, aerotri_params2, kp1_pts, kp2_pts, max_dist=10):
+def get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts):
+    kp1_pts_npidxs = np.array([kp1_pts[:, 1], kp1_pts[:, 0]]).T
+    kp2_pts_npidxs = np.array([kp2_pts[:, 1], kp2_pts[:, 0]]).T
+    pxyz1, pxyz2, dists_ecu, dists_blk = get_PQ(aereo_params1, aereo_params2, kp1_pts_npidxs, kp2_pts_npidxs)
+    return dists_ecu
+
+def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=10):
     """Filter the tie points by the minimum distance of image rays (projection center & object 
     location) of both images. The minimum distance of image rays is calculated from aerotriangulation.
-    As a result, aerotri_params1 (location and rotation) must have a certain degree of accuracy.
+    As a result, aereo_params1 (location and rotation) must have a certain degree of accuracy.
 
     Parameters
     ----------
-    aerotri_params1: list
+    aereo_params1: list
         [OPK, L_XYZ, ROWS, COLS, FOCAL_LENGTH, PIXEL_SIZE].
-    aerotri_params2: list
+    aereo_params2: list
         [OPK, L_XYZ, ROWS, COLS, FOCAL_LENGTH, PIXEL_SIZE].
     kp1_pts: ndarray
         The shape of kp1_pts is (None, 2). The first dimention means the 
@@ -206,9 +212,7 @@ def filter_tie_points_by_PQ_dist(aerotri_params1, aerotri_params2, kp1_pts, kp2_
         number of tie points. The second dimention means the x and y  (not row and 
         column indices) of the tie point.
     """
-    kp1_pts_npidxs = np.array([kp1_pts[:, 1], kp1_pts[:, 0]]).T
-    kp2_pts_npidxs = np.array([kp2_pts[:, 1], kp2_pts[:, 0]]).T
-    pxyz1, pxyz2, dists_ecu, dists_blk = get_PQ(aerotri_params1, aerotri_params2, kp1_pts_npidxs, kp2_pts_npidxs)
+    dists_ecu = get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
     valid_pt_idxs = np.where(dists_ecu < 10)[0]
     kp1_pts, kp2_pts, dists_ecu = kp1_pts[valid_pt_idxs], kp2_pts[valid_pt_idxs], dists_ecu[valid_pt_idxs]
     return kp1_pts, kp2_pts, dists_ecu
@@ -240,12 +244,20 @@ if __name__ =='__main__':
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
     # find tie points
-    kp1_pts, kp2_pts = find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=700, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
+    kp1_pts, kp2_pts = find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
     plot_kp_lines(img1_norm, kp1_pts, img2_norm, kp2_pts)
     print(len(kp1_pts))
 
-    # filter tie points
-    kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=5)
-    plot_kp_lines(img1_norm, kp1_pts, img2_norm, kp2_pts)
-    print(len(kp1_pts))
+    dists_ecu = get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
+
+    plt.hist(dists_ecu)
+    plt.title("Distance Stats in Object Space")
+    plt.xlabel('distance(m)')
+    plt.ylabel('count of tie points pairs')
+    plt.show()
+
+    # # filter tie points
+    # kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=3)
+    # plot_kp_lines(img1_norm, kp1_pts, img2_norm, kp2_pts)
+    # print(len(kp1_pts))
 
