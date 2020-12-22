@@ -21,7 +21,7 @@ def get_M(OPK):
                   [     sP,         -sO*cP,          cO*cP]])
     return M
 
-def convert_npidxs_to_imxys(npidxs, rows=13824, cols=7680, pixel_size=0.012):
+def convert_npidxs_to_imxys(npidxs, rows=13824, cols=7680, pixel_size=0.012, x_offset=0, y_offset=0):
     """
     image space linear transform
     pixel_size = sensor_width/image_cols = 92.16/7680 = sensor_height/image_rows = 165.8885/13824  # unit: mm/px
@@ -30,13 +30,13 @@ def convert_npidxs_to_imxys(npidxs, rows=13824, cols=7680, pixel_size=0.012):
     col_zoomout, row_zoomout = pixel_size, -pixel_size
     npidxs_trans = tf.transpose(npidxs)
     row_idxs, col_idxs = npidxs_trans[0, :], npidxs_trans[1, :]
-    xs = (col_idxs - (cols/2)) * col_zoomout
-    ys = (row_idxs - (rows/2)) * row_zoomout
+    xs = (col_idxs - (cols/2 + x_offset/pixel_size)) * col_zoomout
+    ys = (row_idxs - (rows/2 + y_offset/pixel_size)) * row_zoomout
     imxys = tf.transpose(tf.stack([xs, ys]))
     return imxys
 
-def get_line_vecs(npidxs, opk, lxyz, rows=13824, cols=7680, pixel_size=0.012, focal_length=120):
-    P_xys = convert_npidxs_to_imxys(npidxs, rows=rows, cols=cols, pixel_size=pixel_size) # (n points, 2 dim)
+def get_line_vecs(npidxs, opk, lxyz, rows=13824, cols=7680, pixel_size=0.012, focal_length=120, x_offset=0, y_offset=0):
+    P_xys = convert_npidxs_to_imxys(npidxs, rows=rows, cols=cols, pixel_size=pixel_size, x_offset=x_offset, y_offset=y_offset) # (n points, 2 dim)
     focal_lengths = tf.ones((tf.shape(P_xys)[0], 1)) * -focal_length
     P_xyzs = tf.transpose(tf.concat([P_xys, focal_lengths], axis=1)) # add -focal_length as new dim to (3 dim, n points)
     M = get_M(opk)

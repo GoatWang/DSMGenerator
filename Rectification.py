@@ -167,6 +167,17 @@ def get_rectify_param(img_shape, kp1_pts, kp2_pts, K=np.eye(3), d=None, shearing
 
     mapx1, mapy1 = cv2.initUndistortRectifyMap(K, d, R1, K, image_size, cv2.CV_16SC2)
     mapx2, mapy2 = cv2.initUndistortRectifyMap(K, d, R2, K, image_size, cv2.CV_16SC2)
+
+    # fig, axes = plt.subplots(2, 3 , figsize=(15, 5))
+    # axes = axes.flatten()
+    # axes[0].imshow(mapx1[:, :, 0], cmap='gray')
+    # axes[1].imshow(mapx1[:, :, 1], cmap='gray')
+    # axes[2].imshow(mapy1, cmap='gray')
+    # axes[3].imshow(mapx2[:, :, 0], cmap='gray')
+    # axes[4].imshow(mapx2[:, :, 1], cmap='gray')
+    # axes[5].imshow(mapy2, cmap='gray')
+    # plt.show()
+
     return mapx1, mapy1, mapx2, mapy2
 
 def drawlines(img1, img2, lines, pts1, pts2):
@@ -258,7 +269,7 @@ if __name__ =='__main__':
     ras2 = tgp.read_raster(img_fp2)
     aereo_params1 = get_DMC_aereo_params(aereo_params_fp1, ras1.shape)
     aereo_params2 = get_DMC_aereo_params(aereo_params_fp2, ras2.shape)
-
+    
     # preprocessing
     img1_norm = tgp.Normalizer().fit_transform(ras1.data[:, :, :3], clip_percentage=(0.1, 0.9))
     img2_norm = tgp.Normalizer().fit_transform(ras2.data[:, :, :3], clip_percentage=(0.1, 0.9))

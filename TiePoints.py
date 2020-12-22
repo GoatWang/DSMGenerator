@@ -4,7 +4,7 @@ import pandas as pd
 import TronGisPy as tgp
 from matplotlib import pyplot as plt
 from sklearn.metrics import pairwise_distances
-from AeroTriangulation_np import get_PQ_np as get_PQ
+from AeroTriangulation import get_PQ
 
 def find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grids=(1, 1)):
     """split the image into grids to find the descriptors to ensure the well distributed tie points.
@@ -52,6 +52,67 @@ def find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grid
     
     # match descriptors
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matches = bf.match(des1s, des2s) # Match descriptors.
+    matches = sorted(matches, key=lambda x:x.distance)
+
+    # convert Matches and kps into numpy array and list
+    kp1s_pts = np.array([kp.pt for kp in kp1s])
+    kp2s_pts = np.array([kp.pt for kp in kp2s])
+    kp1_paired_idxs = [m.queryIdx for m in matches[:topn_n_matches]]
+    kp2_paired_idxs = [m.trainIdx for m in matches[:topn_n_matches]]
+    kp1s_pts = np.array(kp1s_pts)[kp1_paired_idxs]
+    kp2s_pts = np.array(kp2s_pts)[kp2_paired_idxs]
+    return kp1s_pts, kp2s_pts
+
+def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grids=(1, 1)):
+    """split the image into grids to find the descriptors to ensure the well distributed tie points.
+    
+    Parameters
+    ----------
+    gray1: ndarray
+        The first image with only one channel.
+    gray2: ndarray
+        The second image with only one channel.
+    nfeatures: int
+        The number of descriptor to find in one image.
+    topn_n_matches: int, optional, default: 300
+        The top n match links to get the tie point pairs.
+    grids: tuple of int, optional, default: (1, 1)
+        The girdspec to split the image. The Length of grids should be 2, which 
+        means (split_rows, split_cols).
+
+    Returns
+    -------
+    kp1s_pts: ndarray
+        The shape of kp1s_pts is (None, 2). The first dimention means the 
+        number of tie points. The second dimention means the x and y  (not row and 
+        column indices) of the tie point.
+    kp2s_pts: ndarray
+        The shape of kp2s_pts is (None, 2). The first dimention means the 
+        number of tie points. The second dimention means the x and y  (not row and 
+        column indices) of the tie point.
+    """
+    h, w = gray1.shape
+    grid_h, grid_w = int(h//grids[0]), int(w//grids[1])
+    kp1s, kp2s, des1s, des2s = [], [], [], []
+    for grid_row_idx in range(grids[0]):
+        for grid_col_idx in range(grids[1]):
+            orb = cv2.ORB_create(nfeatures)
+            row_st, row_end = grid_row_idx * grid_h, (grid_row_idx+1) * grid_h
+            col_st, col_end = grid_col_idx * grid_w, (grid_col_idx+1) * grid_w
+            mask = np.zeros_like(gray1)
+            mask[row_st:row_end, col_st:col_end] = 1
+            kp1, des1 = orb.detectAndCompute(gray1, mask)
+            kp2, des2 = orb.detectAndCompute(gray2, mask)
+            if len(des1) > 0:
+                kp1s.extend(kp1); des1s.extend(des1);  
+            if len(des2) > 0:
+                kp2s.extend(kp2); des2s.extend(des2)            
+    des1s = np.stack(des1s).astype(np.uint8)
+    des2s = np.stack(des2s).astype(np.uint8)
+    
+    # match descriptors
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(des1s, des2s) # Match descriptors.
     matches = sorted(matches, key=lambda x:x.distance)
 
@@ -159,19 +220,37 @@ def find_tie_points_farest(gray1, gray2, nfeatures=6000, k_for_knn=20, topn_n_ma
     return kp1_pts, kp2_pts
 
 def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, colors=None, figsize=(30, 30)):
-    rows, cols, bands = img1_rgb.shape
-    img = np.empty((rows, cols*2, bands), dtype=img1_rgb.dtype)
-    img[:rows, :cols] = img1_rgb.copy()
-    img[:rows, cols:] = img2_rgb.copy()
+    img = np.concatenate([img1_rgb, img2_rgb], axis=1)
     kp2_pts = np.array(kp2_pts)
-    kp2_pts[:, 0] += cols
+    kp2_pts[:, 0] += img1_rgb.shape[1]
     fig, ax = plt.subplots(1, 1, figsize=figsize)
-    ax.imshow(img)
+    if len(img1_rgb.shape) == 2:
+        ax.imshow(img, cmap='gray')
+    else:
+        ax.imshow(img)
     
+    ax.scatter(kp1_pts[:, 0], kp1_pts[:, 1], s=3, c='red')
+    ax.scatter(kp2_pts[:, 0], kp2_pts[:, 1], s=3, c='red')
+
     for idx, (kp1_pt, kp2_pt) in enumerate(zip(kp1_pts, kp2_pts)):
         c = colors[idx] if colors is not None else np.random.rand(3)
         ax.plot((kp1_pt[0], kp2_pt[0]), (kp1_pt[1], kp2_pt[1]), c=c, linewidth=0.5)
     plt.show()
+
+def plot_kp_lines_img1(img1_rgb, kp1_pts, kp2_pts, colors=None, figsize=(30, 30)):
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    if len(img1_rgb.shape) == 2:
+        ax.imshow(img1_rgb, cmap='gray')
+    else:
+        ax.imshow(img1_rgb)
+    
+    ax.scatter(kp1_pts[:, 0], kp1_pts[:, 1], s=3, c='red')
+
+    for idx, (kp1_pt, kp2_pt) in enumerate(zip(kp1_pts, kp2_pts)):
+        c = colors[idx] if colors is not None else np.random.rand(3)
+        ax.plot((kp1_pt[0], kp2_pt[0]), (kp1_pt[1], kp2_pt[1]), c=c, linewidth=0.5)
+    plt.show()
+
 
 def get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts):
     kp1_pts_npidxs = np.array([kp1_pts[:, 1], kp1_pts[:, 0]]).T
@@ -213,7 +292,7 @@ def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts,
         column indices) of the tie point.
     """
     dists_ecu = get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
-    valid_pt_idxs = np.where(dists_ecu < 10)[0]
+    valid_pt_idxs = np.where(dists_ecu < max_dist)[0]
     kp1_pts, kp2_pts, dists_ecu = kp1_pts[valid_pt_idxs], kp2_pts[valid_pt_idxs], dists_ecu[valid_pt_idxs]
     return kp1_pts, kp2_pts, dists_ecu
 
@@ -249,7 +328,6 @@ if __name__ =='__main__':
     print(len(kp1_pts))
 
     dists_ecu = get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
-
     plt.hist(dists_ecu)
     plt.title("Distance Stats in Object Space")
     plt.xlabel('distance(m)')

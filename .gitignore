@@ -1,4 +1,8 @@
 __pycache__
 Data/testcase1
 Data/testcase2
+Data/testcase4_stereo
 output
+
+test.py
+main_stereo.py

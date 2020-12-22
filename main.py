@@ -8,11 +8,11 @@ from TiePoints import find_tie_points_grids, plot_kp_lines, filter_tie_points_by
 from Rectification import get_rectify_param, rectify, plot_rectified_img, plot_epipolar, rectify_idxs
 
 # get fp
-testdata_dir = os.path.join('Data', 'testcase1')
+testdata_dir = os.path.join('Data', 'testcase2')
 img_fp1 = os.path.join(testdata_dir, '071021h_53_0042' + "_refined.tif") # os.path.join(testdata_dir, "071021h_53~0042_hr4.tif")
 img_fp2 = os.path.join(testdata_dir, '071021h_53_0043' + "_refined.tif") # os.path.join(testdata_dir, "071021h_53~0043_hr4.tif")
-aereo_params_fp1 = os.path.join('Data', 'testcase1', '071021h_53_0042.pkl')
-aereo_params_fp2 = os.path.join('Data', 'testcase1', '071021h_53_0043.pkl')
+aereo_params_fp1 = os.path.join('Data', 'testcase2', '071021h_53_0042_refined.pkl')
+aereo_params_fp2 = os.path.join('Data', 'testcase2', '071021h_53_0043_refined.pkl')
 
 # read data
 ras1 = tgp.read_raster(img_fp1)

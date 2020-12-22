@@ -6,7 +6,8 @@ def get_DMC_aereo_params(pke_fp, img_shape=(13824, 7680)):
     DMC_ROWS_LABEL, DMC_COLS_LABEL = img_shape[:2]
     DMC_PIXEL_SIZE = 92.16/DMC_COLS_LABEL # pixel_size = sensor_width/image_cols = 92.16/7680 = sensor_height/image_rows = 165.8885/13824  # unit: mm/px
     DMC_FOCAL_LENGTH = 120 # 0.012 mm / pixel
-    return OPK, L_XYZ, DMC_ROWS_LABEL, DMC_COLS_LABEL, DMC_FOCAL_LENGTH, DMC_PIXEL_SIZE
+    XOFFSET, YOFFSET = 0, 0
+    return OPK, L_XYZ, DMC_ROWS_LABEL, DMC_COLS_LABEL, DMC_FOCAL_LENGTH, DMC_PIXEL_SIZE, XOFFSET, YOFFSET
 
 if __name__ == '__main__':
     import os
