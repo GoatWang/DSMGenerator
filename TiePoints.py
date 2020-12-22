@@ -4,7 +4,10 @@ import pandas as pd
 import TronGisPy as tgp
 from matplotlib import pyplot as plt
 from sklearn.metrics import pairwise_distances
-from AeroTriangulation import get_PQ
+try:
+    from DSMGenerator.AeroTriangulation import get_PQ, get_line_vecs, project_npidxs_to_XYZs_by_k
+except:
+    from AeroTriangulation import get_PQ, get_line_vecs, project_npidxs_to_XYZs_by_k
 
 def find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grids=(1, 1)):
     """split the image into grids to find the descriptors to ensure the well distributed tie points.
@@ -54,6 +57,9 @@ def find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grid
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     matches = bf.match(des1s, des2s) # Match descriptors.
     matches = sorted(matches, key=lambda x:x.distance)
+    # matches_gms = cv2.xfeatures2d.matchGMS(gray1.shape[:2], gray2.shape[:2], kp1, kp2, matches, 
+    #                                         withScale=True, withRotation=True, thresholdFactor=6)
+    # matches = sorted(matches_gms, key=lambda x:x.distance)
 
     # convert Matches and kps into numpy array and list
     kp1s_pts = np.array([kp.pt for kp in kp1s])
@@ -97,16 +103,16 @@ def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=30
     kp1s, kp2s, des1s, des2s = [], [], [], []
     for grid_row_idx in range(grids[0]):
         for grid_col_idx in range(grids[1]):
-            orb = cv2.ORB_create(nfeatures)
+            orb = cv2.ORB_create(nfeatures, scaleFactor=1.05, patchSize=101, WTA_K=4)
             row_st, row_end = grid_row_idx * grid_h, (grid_row_idx+1) * grid_h
             col_st, col_end = grid_col_idx * grid_w, (grid_col_idx+1) * grid_w
             mask = np.zeros_like(gray1)
             mask[row_st:row_end, col_st:col_end] = 1
             kp1, des1 = orb.detectAndCompute(gray1, mask)
             kp2, des2 = orb.detectAndCompute(gray2, mask)
-            if len(des1) > 0:
+            if des1 is not None:
                 kp1s.extend(kp1); des1s.extend(des1);  
-            if len(des2) > 0:
+            if des2 is not None:
                 kp2s.extend(kp2); des2s.extend(des2)            
     des1s = np.stack(des1s).astype(np.uint8)
     des2s = np.stack(des2s).astype(np.uint8)
@@ -114,7 +120,8 @@ def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=30
     # match descriptors
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(des1s, des2s) # Match descriptors.
-    matches = sorted(matches, key=lambda x:x.distance)
+    matches_gms = cv2.xfeatures2d.matchGMS(gray1.shape[:2], gray2.shape[:2], kp1s, kp2s, matches, withScale=True, withRotation=True, thresholdFactor=2)
+    matches = sorted(matches_gms, key=lambda x:x.distance)
 
     # convert Matches and kps into numpy array and list
     kp1s_pts = np.array([kp.pt for kp in kp1s])
@@ -219,7 +226,7 @@ def find_tie_points_farest(gray1, gray2, nfeatures=6000, k_for_knn=20, topn_n_ma
     kp1_pts, kp2_pts = np.array(kp1_paired_pts), np.array(kp2_paired_pts)
     return kp1_pts, kp2_pts
 
-def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, colors=None, figsize=(30, 30)):
+def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, texts_left=None, texts_right=None, fontsize=8, colors=None, figsize=(30, 30)):
     img = np.concatenate([img1_rgb, img2_rgb], axis=1)
     kp2_pts = np.array(kp2_pts)
     kp2_pts[:, 0] += img1_rgb.shape[1]
@@ -235,6 +242,10 @@ def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, colors=None, figsize=(30
     for idx, (kp1_pt, kp2_pt) in enumerate(zip(kp1_pts, kp2_pts)):
         c = colors[idx] if colors is not None else np.random.rand(3)
         ax.plot((kp1_pt[0], kp2_pt[0]), (kp1_pt[1], kp2_pt[1]), c=c, linewidth=0.5)
+        if texts_left is not None:
+            ax.text(kp1_pt[0]-100, kp1_pt[1], texts_left[idx], fontsize=fontsize)
+        if texts_right is not None:
+            ax.text(kp2_pt[0], kp2_pt[1], texts_right[idx], fontsize=fontsize)
     plt.show()
 
 def plot_kp_lines_img1(img1_rgb, kp1_pts, kp2_pts, colors=None, figsize=(30, 30)):
@@ -252,13 +263,13 @@ def plot_kp_lines_img1(img1_rgb, kp1_pts, kp2_pts, colors=None, figsize=(30, 30)
     plt.show()
 
 
-def get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts):
+def get_dist_from_tie_points(aereo_params1, aereo_params2, kp1_pts, kp2_pts):
     kp1_pts_npidxs = np.array([kp1_pts[:, 1], kp1_pts[:, 0]]).T
     kp2_pts_npidxs = np.array([kp2_pts[:, 1], kp2_pts[:, 0]]).T
-    pxyz1, pxyz2, dists_ecu, dists_blk = get_PQ(aereo_params1, aereo_params2, kp1_pts_npidxs, kp2_pts_npidxs)
-    return dists_ecu
+    dep1, dep2, pxyz1, pxyz2, dists_ecu, dists_blk = get_PQ(aereo_params1, aereo_params2, kp1_pts_npidxs, kp2_pts_npidxs, return_depth=True)
+    return dep1, dep2, pxyz1, pxyz2, dists_ecu
 
-def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=10):
+def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=10, max_depth=None, median_dist=False):
     """Filter the tie points by the minimum distance of image rays (projection center & object 
     location) of both images. The minimum distance of image rays is calculated from aerotriangulation.
     As a result, aereo_params1 (location and rotation) must have a certain degree of accuracy.
@@ -291,10 +302,43 @@ def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts,
         number of tie points. The second dimention means the x and y  (not row and 
         column indices) of the tie point.
     """
-    dists_ecu = get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
-    valid_pt_idxs = np.where(dists_ecu < max_dist)[0]
-    kp1_pts, kp2_pts, dists_ecu = kp1_pts[valid_pt_idxs], kp2_pts[valid_pt_idxs], dists_ecu[valid_pt_idxs]
-    return kp1_pts, kp2_pts, dists_ecu
+    dep1, dep2, pxyz1, pxyz2, dists_ecu = get_dist_from_tie_points(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
+    dists_ecu = dists_ecu - np.median(dists_ecu) if median_dist else dists_ecu
+    valid_pt_mask = (dists_ecu < max_dist) & (dep1 > 0)
+    if max_depth is not None:
+        valid_pt_mask &= (dep1 < max_depth)
+    valid_pt_idxs = np.where(valid_pt_mask)
+    dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu = dep1[valid_pt_idxs], dep2[valid_pt_idxs], pxyz1[valid_pt_idxs], pxyz2[valid_pt_idxs], kp1_pts[valid_pt_idxs], kp2_pts[valid_pt_idxs], dists_ecu[valid_pt_idxs]
+    return dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu
+
+
+def plot_aero_triangulation(aereo_params1, aereo_params2, pxyz1, pxyz2, colors=None, scale_img=10):
+    from mpl_toolkits.mplot3d import Axes3D
+    OPK1, L_XYZ1, ROWS1, COLS1, FOCAL_LENGTH1, PIXEL_SIZE1, XOFFSET1, YOFFSET1 = aereo_params1
+    OPK2, L_XYZ2, ROWS2, COLS2, FOCAL_LENGTH2, PIXEL_SIZE2, XOFFSET2, YOFFSET2 = aereo_params2
+
+    npidxs = [(0, 0), (0, COLS1), (ROWS1, COLS1), (ROWS1, 0)]
+    P_XYZs1 = project_npidxs_to_XYZs_by_k(npidxs, aereo_params1, k=1/scale_img)
+    P_XYZs2 = project_npidxs_to_XYZs_by_k(npidxs, aereo_params1, k=1/scale_img)
+
+    fig = plt.figure(figsize=(20, 10))
+    ax1 = fig.add_subplot(1, 1, 1, projection='3d')
+    XYZ1 = (P_XYZs1[[0,1,3,2], :].reshape(2, 2, -1).transpose(2, 0, 1) / 1000) * scale_img
+    XYZ2 = (P_XYZs2[[0,1,3,2], :].reshape(2, 2, -1).transpose(2, 0, 1) / 1000) * scale_img
+    ax1.plot_surface(*XYZ1, alpha=0.3)
+    ax1.plot_surface(*XYZ2, alpha=0.3)
+
+    for idx, (p1, p2) in enumerate(zip(pxyz1, pxyz2)):
+        c = colors[idx] if colors is not None else np.random.rand(3)
+        ax1.plot([L_XYZ1[0], p1[0]], [L_XYZ1[1], p1[1]], zs=[L_XYZ1[2], p1[2]], color=c, linewidth=1)
+        ax1.plot([L_XYZ2[0], p1[0]], [L_XYZ2[1], p2[1]], zs=[L_XYZ2[2], p2[2]], color=c, linewidth=1)
+
+    ax1.scatter([L_XYZ1[0]], [L_XYZ1[1]], [L_XYZ1[2]], color='red')
+    ax1.scatter([L_XYZ2[0]], [L_XYZ2[1]], [L_XYZ2[2]], color='blue')
+    ax1.set_xlabel('x')
+    ax1.set_ylabel('y')
+    ax1.set_zlabel('z')
+    plt.show()
 
 if __name__ =='__main__':
     import os 
@@ -324,18 +368,19 @@ if __name__ =='__main__':
 
     # find tie points
     kp1_pts, kp2_pts = find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
-    plot_kp_lines(img1_norm, kp1_pts, img2_norm, kp2_pts)
-    print(len(kp1_pts))
-
-    dists_ecu = get_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
-    plt.hist(dists_ecu)
-    plt.title("Distance Stats in Object Space")
-    plt.xlabel('distance(m)')
-    plt.ylabel('count of tie points pairs')
-    plt.show()
-
-    # # filter tie points
-    # kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=3)
     # plot_kp_lines(img1_norm, kp1_pts, img2_norm, kp2_pts)
     # print(len(kp1_pts))
+
+    # ks1, ks2, pxyz1, pxyz2, dists_ecu = get_dist_from_tie_points(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
+    # plt.hist(dists_ecu)
+    # plt.title("Distance Stats in Object Space")
+    # plt.xlabel('distance(m)')
+    # plt.ylabel('count of tie points pairs')
+    # plt.show()
+
+    # filter tie points
+    dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=3)
+    texts_left = ["d=%.2f, "%d + "k=%.2f"%k for idx, (d, k) in enumerate(zip(dists_ecu, dep1))]
+    plot_kp_lines(img1_norm, kp1_pts, img2_norm, kp2_pts, texts_left=texts_left, fontsize=12)
+    print(len(kp1_pts))
 

@@ -30,7 +30,7 @@ gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
 # find tie points & filter tie points
 kp1_pts, kp2_pts = find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=700, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
-kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=5)
+dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=5)
 
 # rectify image & image index
 mapx1, mapy1, mapx2, mapy2 = get_rectify_param(gray1.shape, kp1_pts, kp2_pts, shearing=True)
