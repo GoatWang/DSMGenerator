@@ -57,9 +57,6 @@ def find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grid
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     matches = bf.match(des1s, des2s) # Match descriptors.
     matches = sorted(matches, key=lambda x:x.distance)
-    # matches_gms = cv2.xfeatures2d.matchGMS(gray1.shape[:2], gray2.shape[:2], kp1, kp2, matches, 
-    #                                         withScale=True, withRotation=True, thresholdFactor=6)
-    # matches = sorted(matches_gms, key=lambda x:x.distance)
 
     # convert Matches and kps into numpy array and list
     kp1s_pts = np.array([kp.pt for kp in kp1s])
@@ -70,7 +67,7 @@ def find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grid
     kp2s_pts = np.array(kp2s_pts)[kp2_paired_idxs]
     return kp1s_pts, kp2s_pts
 
-def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grids=(1, 1)):
+def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, gms=True, grids=(1, 1)):
     """split the image into grids to find the descriptors to ensure the well distributed tie points.
     
     Parameters
@@ -120,8 +117,9 @@ def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=30
     # match descriptors
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(des1s, des2s) # Match descriptors.
-    matches_gms = cv2.xfeatures2d.matchGMS(gray1.shape[:2], gray2.shape[:2], kp1s, kp2s, matches, withScale=True, withRotation=True, thresholdFactor=2)
-    matches = sorted(matches_gms, key=lambda x:x.distance)
+    if gms:
+        matches = cv2.xfeatures2d.matchGMS(gray1.shape[:2], gray2.shape[:2], kp1s, kp2s, matches, withScale=True, withRotation=True, thresholdFactor=2)
+    matches = sorted(matches, key=lambda x:x.distance)
 
     # convert Matches and kps into numpy array and list
     kp1s_pts = np.array([kp.pt for kp in kp1s])
