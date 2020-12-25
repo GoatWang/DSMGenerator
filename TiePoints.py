@@ -1,7 +1,6 @@
 import cv2 
 import numpy as np
 import pandas as pd
-import TronGisPy as tgp
 from matplotlib import pyplot as plt
 from sklearn.metrics import pairwise_distances
 try:
@@ -124,6 +123,67 @@ def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=30
     # convert Matches and kps into numpy array and list
     kp1s_pts = np.array([kp.pt for kp in kp1s])
     kp2s_pts = np.array([kp.pt for kp in kp2s])
+    kp1_paired_idxs = [m.queryIdx for m in matches[:topn_n_matches]]
+    kp2_paired_idxs = [m.trainIdx for m in matches[:topn_n_matches]]
+    kp1s_pts = np.array(kp1s_pts)[kp1_paired_idxs]
+    kp2s_pts = np.array(kp2s_pts)[kp2_paired_idxs]
+    return kp1s_pts, kp2s_pts
+
+
+def find_tie_points_masks(gray1, gray2, mask1, mask2, nfeatures=1000, topn_n_matches=300, gms=True):
+    """split the image into grids to find the descriptors to ensure the well distributed tie points.
+    
+    Parameters
+    ----------
+    gray1: ndarray
+        The first image with only one channel.
+    gray2: ndarray
+        The second image with only one channel.
+    nfeatures: int
+        The number of descriptor to find in one image.
+    topn_n_matches: int, optional, default: 300
+        The top n match links to get the tie point pairs.
+    grids: tuple of int, optional, default: (1, 1)
+        The girdspec to split the image. The Length of grids should be 2, which 
+        means (split_rows, split_cols).
+
+    Returns
+    -------
+    kp1s_pts: ndarray
+        The shape of kp1s_pts is (None, 2). The first dimention means the 
+        number of tie points. The second dimention means the x and y  (not row and 
+        column indices) of the tie point.
+    kp2s_pts: ndarray
+        The shape of kp2s_pts is (None, 2). The first dimention means the 
+        number of tie points. The second dimention means the x and y  (not row and 
+        column indices) of the tie point.
+    """
+
+    orb = cv2.ORB_create(nfeatures, scaleFactor=2, patchSize=31, WTA_K=2)
+    # orb = cv2.AKAZE_create(nfeatures)
+    # orb = cv2.ORB_create(nfeatures, scaleFactor=1.05, patchSize=101, WTA_K=4)
+    # orb = cv2.xfeatures2d.SIFT_create(nfeatures)
+    # orb = cv2.xfeatures2d.SURF_create(nfeatures)
+    kp1, des1 = orb.detectAndCompute(gray1, mask1)
+    kp2, des2 = orb.detectAndCompute(gray2, mask2)
+    assert des1 is not None, "No descriptor"
+    assert des2 is not None, "No descriptor"
+
+
+    # match descriptors
+    # bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    bf = cv2.BFMatcher()
+    matches = bf.match(des1, des2) # Match descriptors.
+    if gms:
+        matches = cv2.xfeatures2d.matchGMS(gray1.shape[:2], gray2.shape[:2], kp1, kp2, matches, withScale=True, withRotation=True, thresholdFactor=2)
+    matches = sorted(matches, key=lambda x:x.distance)
+
+    
+
+
+    # convert Matches and kps into numpy array and list
+    kp1s_pts = np.array([kp.pt for kp in kp1])
+    kp2s_pts = np.array([kp.pt for kp in kp2])
     kp1_paired_idxs = [m.queryIdx for m in matches[:topn_n_matches]]
     kp2_paired_idxs = [m.trainIdx for m in matches[:topn_n_matches]]
     kp1s_pts = np.array(kp1s_pts)[kp1_paired_idxs]
@@ -287,7 +347,7 @@ def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts,
         number of tie points. The second dimention means the x and y  (not row and 
         column indices) of the tie point.
     max_dist: int, default: 10
-        The max acceptable distance of image rays. Its unit is meters.
+        The max acceptable minimum distance of image rays. Its unit is meters.
 
     Returns
     -------
@@ -302,7 +362,7 @@ def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts,
     """
     dep1, dep2, pxyz1, pxyz2, dists_ecu = get_dist_from_tie_points(aereo_params1, aereo_params2, kp1_pts, kp2_pts)
     dists_ecu = dists_ecu - np.median(dists_ecu) if median_dist else dists_ecu
-    valid_pt_mask = (dists_ecu < max_dist) & (dep1 > 0)
+    valid_pt_mask = (np.abs(dists_ecu) < max_dist) & (dep1 > 0)
     if max_depth is not None:
         valid_pt_mask &= (dep1 < max_depth)
     valid_pt_idxs = np.where(valid_pt_mask)

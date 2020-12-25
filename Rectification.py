@@ -231,13 +231,17 @@ def rectify(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value=-1):
 def rectify_idxs(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value=-1):
     rows, cols = image.shape[:2]
     image1_ri, image1_ci = np.meshgrid(range(cols), range(rows))
-    image1_npidxs = np.stack([image1_ri, image1_ci]).astype(np.float32).transpose(1, 2, 0)
-    rectified_npidxs = rectify(image1_npidxs, mapx, mapy)
+    image1_npidxs = np.stack([image1_ri, image1_ci]).astype(np.int32).transpose(1, 2, 0)
+    rectified_npidxs = rectify(image1_npidxs, mapx, mapy, interpolation=cv2.INTER_NEAREST)
     return rectified_npidxs
 
 def plot_rectified_img(rectified1, rectified2):
-    rows, cols, bands = rectified1.shape
-    img = np.empty((rows, cols*2, bands), dtype=rectified1.dtype)
+    if len(rectified1.shape) == 3:
+        rows, cols, bands = rectified1.shape
+        img = np.empty((rows, cols*2, bands), dtype=rectified1.dtype)
+    else:
+        rows, cols = rectified1.shape
+        img = np.empty((rows, cols*2), dtype=rectified1.dtype)
     img[:rows, :cols] = rectified1.copy()
     img[:rows, cols:] = rectified2.copy()
 
@@ -246,6 +250,13 @@ def plot_rectified_img(rectified1, rectified2):
     for y in np.arange(0, rows, 100):
         ax.axhline(y=y, color=np.random.rand(3), linestyle='-', linewidth=0.5)
     plt.show()
+
+def plot_rectified_img2(rectified1, rectified2):
+    fig, axes = plt.subplots(1, 2, figsize=(15, 15))
+    axes[0].imshow(cv2.addWeighted(rectified1, 0.5, rectified2, 0.5, 0))
+    axes[1].imshow(cv2.addWeighted(rectified1, 1, rectified2, -1, 0))
+    plt.show()
+
 
 if __name__ =='__main__':
     import os 
@@ -284,16 +295,18 @@ if __name__ =='__main__':
 
     # rectify image
     mapx1, mapy1, mapx2, mapy2 = get_rectify_param(gray1.shape, kp1_pts, kp2_pts, shearing=True)
-    rectified1 = rectify(img1_norm, mapx1, mapy1, border_value=0)
-    rectified2 = rectify(img2_norm, mapx2, mapy2, border_value=0)
+    rectified1_norm = rectify(img1_norm, mapx1, mapy1, border_value=0)
+    rectified2_norm = rectify(img2_norm, mapx2, mapy2, border_value=0)
     plot_epipolar(img1_norm, img2_norm, kp1_pts, kp2_pts)
-    plot_rectified_img(rectified1, rectified2)
+    plot_rectified_img(rectified1_norm, rectified2_norm)
+    plot_rectified_img2(rectified1_norm, rectified2_norm)
 
     # rectify image index
     rectified_npidxs1 = rectify_idxs(img1, mapx1, mapy1, border_value=-1)
     rectified_npidxs2 = rectify_idxs(img2, mapx2, mapy2, border_value=-1)
     rectified_npidxs1_show = tgp.Normalizer().fit_transform(rectified_npidxs1[:, :, 0] * rectified_npidxs1[:, :, 1])
     rectified_npidxs2_show = tgp.Normalizer().fit_transform(rectified_npidxs2[:, :, 0] * rectified_npidxs2[:, :, 1])
+
     fig, (ax1, ax2) = plt.subplots(1, 2)
     ax1.imshow(rectified_npidxs1_show, cmap='gray')
     ax2.imshow(rectified_npidxs2_show, cmap='gray')
