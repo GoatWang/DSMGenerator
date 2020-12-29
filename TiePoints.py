@@ -99,7 +99,10 @@ def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=30
     kp1s, kp2s, des1s, des2s = [], [], [], []
     for grid_row_idx in range(grids[0]):
         for grid_col_idx in range(grids[1]):
-            orb = cv2.ORB_create(nfeatures, scaleFactor=1.05, patchSize=101, WTA_K=4)
+            # orb = cv2.xfeatures2d.SURF_create(nfeatures)
+            orb = cv2.xfeatures2d.SIFT_create(nfeatures, nOctaveLayers=10)
+            # orb.setHessianThreshold(50000)
+            # orb = cv2.ORB_create(nfeatures, scaleFactor=1.05, patchSize=101, WTA_K=4)
             row_st, row_end = grid_row_idx * grid_h, (grid_row_idx+1) * grid_h
             col_st, col_end = grid_col_idx * grid_w, (grid_col_idx+1) * grid_w
             mask = np.zeros_like(gray1)
