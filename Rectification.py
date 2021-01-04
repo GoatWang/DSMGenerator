@@ -183,6 +183,7 @@ def get_rectify_param(img_shape, kp1_pts, kp2_pts, K=np.eye(3), d=None, shearing
 def drawlines(img1, img2, lines, pts1, pts2):
     ''' img1 - image on which we draw the epilines for the points in img2
         lines - corresponding epilines '''
+    img1, img2 = img1.copy(), img2.copy()
     r, c = img1.shape[:2]
     pts1 = pts1.astype(np.int)
     pts2 = pts2.astype(np.int)

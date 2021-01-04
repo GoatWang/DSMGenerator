@@ -75,9 +75,9 @@ def train(loss, learning_rate):
 
 # def optimize_opk(OPK1, OPK2, L_XYZ1, L_XYZ2, kp1_npidxs, kp2_npidxs, learning_rate=0.0001, training_steps=500, verbose=10, seed=2020):
 def get_PQ(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs):
-    OPK1, L_XYZ1, ROWS1, COLS1, FOCAL_LENGTH1, PIXEL_SIZE1 = aerotri_params1
-    OPK2, L_XYZ2, ROWS2, COLS2, FOCAL_LENGTH2, PIXEL_SIZE2 = aerotri_params2
-    
+    OPK1, L_XYZ1, ROWS1, COLS1, FOCAL_LENGTH1, PIXEL_SIZE1, XOFFSET, YOFFSET = aerotri_params1
+    OPK2, L_XYZ2, ROWS2, COLS2, FOCAL_LENGTH2, PIXEL_SIZE2, XOFFSET, YOFFSET = aerotri_params2
+
     L_st = np.array([1, 1, L_XYZ1[2]], dtype=np.float32)
     L_XYZ1_temp = (L_XYZ1 - L_XYZ1) + L_st
     L_XYZ2_temp = (L_XYZ2 - L_XYZ1) + L_st
@@ -103,17 +103,19 @@ def get_PQ(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs):
         
         init_op = tf.global_variables_initializer()
         sess.run(init_op)
-        pxyz1_out, pxyz2_out = sess.run([pxyz1, pxyz2], feed_dict=feed_dict)
+        pxyz1_out, pxyz2_out, dists_ecu_out = sess.run([pxyz1, pxyz2, dists_ecu], feed_dict=feed_dict)
 
     pxyz1_out = L_XYZ1 + (pxyz1_out - L_st)
     pxyz2_out = L_XYZ1 + (pxyz2_out - L_st)
-    return pxyz1_out, pxyz2_out
+
+    return pxyz1_out, pxyz2_out, dists_ecu_out
 
 
-def optimize_opk(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, std_lim_for_training=None, learning_rate=0.0001, training_steps=500, verbose=10, seed=2020):
-    OPK1, L_XYZ1, ROWS1, COLS1, FOCAL_LENGTH1, PIXEL_SIZE1 = aerotri_params1
-    OPK2, L_XYZ2, ROWS2, COLS2, FOCAL_LENGTH2, PIXEL_SIZE2 = aerotri_params2
-    
+def optimize_opk(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, OPK1_trainable=False, L_XYZ1_trainable=False, OPK2_trainable=True, L_XYZ2_trainable=True, std_lim_for_training=None, learning_rate=0.0001, training_steps=500, verbose=10, seed=2020):
+    OPK1, L_XYZ1, ROWS1, COLS1, FOCAL_LENGTH1, PIXEL_SIZE1, XOFFSET, YOFFSET = aerotri_params1
+    OPK2, L_XYZ2, ROWS2, COLS2, FOCAL_LENGTH2, PIXEL_SIZE2, XOFFSET, YOFFSET = aerotri_params2
+    OPK1, L_XYZ1, OPK2, L_XYZ2 = np.array(OPK1, dtype=np.float32), np.array(L_XYZ1, dtype=np.float32), np.array(OPK2, dtype=np.float32), np.array(L_XYZ2, dtype=np.float32)
+
     L_st = np.array([1, 1, L_XYZ1[2]], dtype=np.float32)
     L_XYZ1_temp = (L_XYZ1 - L_XYZ1) + L_st
     L_XYZ2_temp = (L_XYZ2 - L_XYZ1) + L_st
@@ -126,10 +128,11 @@ def optimize_opk(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, std_l
         npidxs2 = tf.placeholder(tf.float32, shape=(None, 2), name='npidxs2')
         feed_dict = {npidxs1:kp1_npidxs, npidxs2:kp2_npidxs}
 
-        opk1 = tf.Variable(list(OPK1), shape=3, trainable=True, name="opk1")
-        opk2 = tf.Variable(list(OPK2), shape=3, trainable=True, name="opk2")
-        lxyz1 = tf.Variable(list(L_XYZ1_temp), shape=3, trainable=False, name="lxyz1")
-        lxyz2 = tf.Variable(list(L_XYZ2_temp), shape=3, trainable=False, name="lxyz2")
+
+        opk1 = tf.Variable(list(OPK1), shape=3, trainable=OPK1_trainable, name="opk1")
+        opk2 = tf.Variable(list(OPK2), shape=3, trainable=OPK2_trainable, name="opk2")
+        lxyz1 = tf.Variable(list(L_XYZ1_temp), shape=3, trainable=L_XYZ1_trainable, name="lxyz1")
+        lxyz2 = tf.Variable(list(L_XYZ2_temp), shape=3, trainable=L_XYZ2_trainable, name="lxyz2")
         
 
         # tf operations
@@ -150,9 +153,12 @@ def optimize_opk(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, std_l
         # update feed dict for precise training
         if std_lim_for_training:
             dist_ecu_out = sess.run(dists_ecu, feed_dict=feed_dict)
-    #         training_idxs = np.argsort(dist_ecu_out)[:top_n_for_training]
+            # training_idxs = np.argsort(dist_ecu_out)[:top_n_for_training]
             training_idxs = np.where(dist_ecu_out < (np.std(dist_ecu_out) * std_lim_for_training))[0]
+            assert len(training_idxs) > 0, "You don't have tie point pairs with distance less than std_lim_for_training*std"
             feed_dict = {npidxs1:kp1_npidxs[training_idxs], npidxs2:kp2_npidxs[training_idxs]}
+        else:
+            training_idxs = np.arange(0, len(kp1_npidxs), 1)
 
         print("distance (init):", sess.run(dists_ecu_mean, feed_dict=feed_dict))
         non_zero_idx = None
@@ -185,22 +191,78 @@ def optimize_opk(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, std_l
 
 
 
-if __name__ == '__main__':
-    tf.reset_default_graph()
-    vec1_test = np.array([[3, -1, 2], [1, -2, 1], [1, 2, -2]])  # p, q, r => L_point
-    spt1_test = np.array([[4, 2, 1], [3, -4, -2], [2, -3, 3]])  # a, b, c => vector
-    vec2_test = np.array([[-7, 1, -1], [4, -1, 2], [-3, 4, 1]])
-    spt2_test = np.array([[5, 3, -2], [-9, 2, 0], [-2, 2, 0]])
+# if __name__ == '__main__':
+#     tf.reset_default_graph()
+#     vec1_test = np.array([[3, -1, 2], [1, -2, 1], [1, 2, -2]])  # p, q, r => L_point
+#     spt1_test = np.array([[4, 2, 1], [3, -4, -2], [2, -3, 3]])  # a, b, c => vector
+#     vec2_test = np.array([[-7, 1, -1], [4, -1, 2], [-3, 4, 1]])
+#     spt2_test = np.array([[5, 3, -2], [-9, 2, 0], [-2, 2, 0]])
     
-    with tf.Session() as sess:
-        # input param
-        vecs1 = tf.placeholder(tf.float32, shape=(None, 3))
-        spts1 = tf.placeholder(tf.float32, shape=(None, 3))
-        vecs2 = tf.placeholder(tf.float32, shape=(None, 3))
-        spts2 = tf.placeholder(tf.float32, shape=(None, 3))
-        feed_dict = {vecs1:vec1_test, spts1:spt1_test, vecs2:vec2_test, spts2:spt2_test}
+#     with tf.Session() as sess:
+#         # input param
+#         vecs1 = tf.placeholder(tf.float32, shape=(None, 3))
+#         spts1 = tf.placeholder(tf.float32, shape=(None, 3))
+#         vecs2 = tf.placeholder(tf.float32, shape=(None, 3))
+#         spts2 = tf.placeholder(tf.float32, shape=(None, 3))
+#         feed_dict = {vecs1:vec1_test, spts1:spt1_test, vecs2:vec2_test, spts2:spt2_test}
 
-        # tf operations
-        sess.run(tf.global_variables_initializer())
-        pxyz1, pxyz2, dist_ecu, dist_blk = sess.run(cal_dist(vecs1, spts1, vecs2, spts2), feed_dict=feed_dict)
-    print(dist_ecu) # array([0.       , 7.8740077, 3.       ], dtype=float32)
+#         # tf operations
+#         sess.run(tf.global_variables_initializer())
+#         pxyz1, pxyz2, dist_ecu, dist_blk = sess.run(cal_dist(vecs1, spts1, vecs2, spts2), feed_dict=feed_dict)
+#     print(dist_ecu) # array([0.       , 7.8740077, 3.       ], dtype=float32)
+
+
+if __name__ == '__main__':
+    import os 
+    import cv2
+    import TronGisPy as tgp
+    from matplotlib import pyplot as plt
+    from io_aereo_params import get_DMC_aereo_params
+    from TiePoints import get_PQ as get_PQ_np
+    from TiePoints import find_tie_points_grids, filter_tie_points_by_PQ_dist, plot_kp_lines
+
+    # get fp
+    testdata_dir = os.path.join('Data', 'testcase3')
+    img_fp1 = os.path.join(testdata_dir, '071021h_53_0042_refined.tif') # os.path.join(testdata_dir, "071021h_53~0042_hr4.tif")
+    img_fp2 = os.path.join(testdata_dir, '071021h_53_0043_refined.tif') # os.path.join(testdata_dir, "071021h_53~0043_hr4.tif")
+    aereo_params_fp1 = os.path.join(testdata_dir, '071021h_53_0042_refined.pkl')
+    aereo_params_fp2 = os.path.join(testdata_dir, '071021h_53_0043_refined.pkl')
+
+    # read data
+    ras1 = tgp.read_raster(img_fp1)
+    ras2 = tgp.read_raster(img_fp2)
+    aereo_params1 = get_DMC_aereo_params(aereo_params_fp1, ras1.shape)
+    aereo_params2 = get_DMC_aereo_params(aereo_params_fp2, ras2.shape)
+
+    # preprocessing
+    img1_norm = tgp.Normalizer().fit_transform(ras1.data[:, :, :3], clip_percentage=(0.1, 0.9))
+    img2_norm = tgp.Normalizer().fit_transform(ras2.data[:, :, :3], clip_percentage=(0.1, 0.9))
+    img1 = (tgp.Normalizer().fit_transform(ras1.data[:, :, [2, 1, 0]]) * 255).astype(np.uint8)
+    img2 = (tgp.Normalizer().fit_transform(ras2.data[:, :, [2, 1, 0]]) * 255).astype(np.uint8)
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+
+    # find tie points
+    kp1_pts, kp2_pts = find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
+    dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=3)
+    texts_left = ["d=%.2f, "%d + "k=%.2f"%k for idx, (d, k) in enumerate(zip(dists_ecu, dep1))]
+    # plot_kp_lines(img1_norm, kp1_pts, img2_norm, kp2_pts, texts_left=texts_left, fontsize=12)
+
+    kp1_paired_pts_npidxs = np.array([kp1_pts[:, 1], kp1_pts[:, 0]]).T
+    kp2_paired_pts_npidxs = np.array([kp2_pts[:, 1], kp2_pts[:, 0]]).T
+    opt_outs = optimize_opk(aereo_params1, aereo_params2,
+                            kp1_paired_pts_npidxs, kp2_paired_pts_npidxs, 
+                            OPK1_trainable=True, L_XYZ1_trainable=False, 
+                            OPK2_trainable=True, L_XYZ2_trainable=False, 
+                            std_lim_for_training = 0.8,
+                            learning_rate=0.0001, training_steps=500, 
+                            verbose=10, seed=2020)
+    training_idxs, OPK1_new, OPK2_new, L_XYZ1_new, L_XYZ2_new, P_XYZ1_new, P_XYZ2_new = opt_outs
+
+    # plot calibration result
+    P_XYZ1, P_XYZ2, dists_ecu = get_PQ(aereo_params1, aereo_params2, kp1_paired_pts_npidxs[training_idxs], kp2_paired_pts_npidxs[training_idxs])
+    plt.figure(figsize=(10, 5))
+    plt.hist(np.sqrt(np.sum(np.square(P_XYZ1 - P_XYZ2), axis=1)), color=(1, 0, 0, 0.5), bins=30, label='original')
+    plt.hist(np.sqrt(np.sum(np.square(P_XYZ1_new - P_XYZ2_new), axis=1)), color=(0, 0, 1, 0.5), bins=30, label='calibrated')
+    plt.legend()
+    plt.show()

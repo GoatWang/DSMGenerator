@@ -66,22 +66,21 @@ def project_npidxs_to_XYZs_by_k(P_npidxs, aerotri_params, k=1):
     """
     idxs conversion from image space and object space.
     P_xyzs: xyzs of points in image space.
-    P_Z: assume height.
-    return_k: assume height.
     """
     # aerotri_params
     OPK, L_XYZ, ROWS, COLS, FOCAL_LENGTH, PIXEL_SIZE, XOFFSET, YOFFSET = aerotri_params
     # L_XYZ = np.expand_dims(L_XYZ, axis=-1)
 
     # calculate P_imxyzs from P_npidxs
-    P_xys = convert_npidxs_to_imxys(np.array(P_npidxs), ROWS, COLS, PIXEL_SIZE, XOFFSET, YOFFSET) # (n points, 2 dim)
+    P_xys = convert_npidxs_to_imxys(np.array(P_npidxs), ROWS, COLS, PIXEL_SIZE, XOFFSET, YOFFSET) # (n points, 2 dim), in mm unit
     P_xyzs = np.concatenate([P_xys, np.full((len(P_xys), 1), -FOCAL_LENGTH)], axis=1).T/1000 # add -focal_length as new dim to (3 dim, n points), /1000 mm => m
 
     # calculate P_XYZs from P_imxyzs
-    M, L_Z = get_M(OPK), L_XYZ[2]
-    mt_xyzs = np.matmul(M.T, P_xyzs)
+    M = get_M(OPK)
+    mt_xyzs = (1/k) * (np.matmul(M.T, P_xyzs))
     P_XYZs = ((mt_xyzs) + np.expand_dims(L_XYZ, axis=-1)).T # 4 points, 3 dim
     return P_XYZs
+
 
 def project_XYZs_to_npidxs(P_XYZs, aerotri_params, return_k=False):
     """
@@ -102,7 +101,7 @@ def project_XYZs_to_npidxs(P_XYZs, aerotri_params, return_k=False):
     L_XYZ = np.array(L_XYZ).reshape(3, 1) # =>L_XYZ.shape==(3, 1)
     dXYZs = (P_XYZs-L_XYZ) # =>xyz.shape==(3, None)
     m_XYZs = np.matmul(M, dXYZs)
-    ks = -(FOCAL_LENGTH/1000) / m_XYZs[2] # convert FOCAL_LENGTH from mm to m
+    ks = (-(FOCAL_LENGTH)/1000) / (m_XYZs[2]/1000) # convert from mm to m
     P_xyzs = (ks * m_XYZs).T # (n points, 3 dim)
     
     # calculate P_npidxs from P_xyzs

@@ -1,8 +1,9 @@
-def get_disparity_map(rectified1_gray, rectified2_gray, min_disparity=-256, num_disparities=256, block_size=5):
+import cv2
+def get_disparity_map(rectified1_gray, rectified2_gray, min_disparity=-256, num_disparities=256, block_size=5, disp12_max_diff=-1):
     # https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html?highlight=disparity#StereoSGBM::StereoSGBM%28int%20minDisparity,%20int%20numDisparities,%20int%20SADWindowSize,%20int%20P1,%20int%20P2,%20int%20disp12MaxDiff,%20int%20preFilterCap,%20int%20uniquenessRatio,%20int%20speckleWindowSize,%20int%20speckleRange,%20bool%20fullDP%29
     # https://stackoverflow.com/questions/33688997/how-to-define-the-parameter-numdisparities-in-stereosgbm
     # https://github.com/guimeira/stereo-tuner
-    stereo = cv2.StereoSGBM_create(minDisparity=min_disparity, numDisparities=num_disparities, blockSize=block_size)
+    stereo = cv2.StereoSGBM_create(minDisparity=min_disparity, numDisparities=num_disparities, blockSize=block_size, disp12MaxDiff=disp12_max_diff)
     # stereo = cv2.StereoSGBM_create(minDisparity=min_disparity, numDisparities=num_disparities, blockSize=block_size, P1=8*3*blockSize*blockSize, p2=32*3*blockSize*blockSize)
     disparity = stereo.compute(rectified1_gray, rectified2_gray)
     return disparity
