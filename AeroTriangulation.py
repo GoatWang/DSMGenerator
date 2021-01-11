@@ -101,7 +101,7 @@ def project_XYZs_to_npidxs(P_XYZs, aerotri_params, return_k=False):
     L_XYZ = np.array(L_XYZ).reshape(3, 1) # =>L_XYZ.shape==(3, 1)
     dXYZs = (P_XYZs-L_XYZ) # =>xyz.shape==(3, None)
     m_XYZs = np.matmul(M, dXYZs)
-    ks = (-(FOCAL_LENGTH)/1000) / (m_XYZs[2]/1000) # convert from mm to m
+    ks = (-(FOCAL_LENGTH)/1000) / (m_XYZs[2]) # convert from mm to m
     P_xyzs = (ks * m_XYZs).T # (n points, 3 dim)
     
     # calculate P_npidxs from P_xyzs
@@ -172,8 +172,8 @@ def get_PQ(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, return_dept
     P_npidxs, ks1 = project_XYZs_to_npidxs(pxyz1, aerotri_params1, return_k=True)
     P_npidxs, ks2 = project_XYZs_to_npidxs(pxyz2, aerotri_params2, return_k=True)
     if return_depth:
-        ks1 = (1 / ks1) * (FOCAL_LENGTH1 / 1000)
-        ks2 = (1 / ks1) * (FOCAL_LENGTH2 / 1000)
+        ks1 = (1 / ks1) * (FOCAL_LENGTH1/1000)
+        ks2 = (1 / ks2) * (FOCAL_LENGTH2/1000)
     return ks1, ks2, pxyz1, pxyz2, dists_ecu, dists_blk
 
 

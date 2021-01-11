@@ -180,39 +180,50 @@ def get_rectify_param(img_shape, kp1_pts, kp2_pts, K=np.eye(3), d=None, shearing
 
     return mapx1, mapy1, mapx2, mapy2
 
-def drawlines(img1, img2, lines, pts1, pts2):
+def drawlines(img1, img2, lines, pts1, pts2, colors=None):
     ''' img1 - image on which we draw the epilines for the points in img2
         lines - corresponding epilines '''
     img1, img2 = img1.copy(), img2.copy()
     r, c = img1.shape[:2]
     pts1 = pts1.astype(np.int)
     pts2 = pts2.astype(np.int)
-    for r, pt1, pt2 in zip(lines, pts1, pts2):
-        color = np.random.rand(3)
+    for idx, (r, pt1, pt2) in enumerate(zip(lines, pts1, pts2)):
+        color = np.random.rand(3) if colors is None else colors[idx]
         x0, y0 = map(int, [0, -r[2]/r[1] ])
         x1, y1 = map(int, [c, -(r[2]+r[0]*c)/r[1] ])
-        img1 = cv2.line(img1, (x0,y0), (x1,y1), color, 5, lineType=cv2.LINE_AA)
-        img1 = cv2.circle(img1, tuple(pt1), 5, color, 30)
-        img2 = cv2.circle(img2, tuple(pt2), 5, color, 30)
+        img1 = cv2.line(img1, (x0,y0), (x1,y1), color, 8, cv2.LINE_AA)
+        img1 = cv2.circle(img1, tuple(pt1), 8, color, 30)
+        img2 = cv2.circle(img2, tuple(pt2), 8, color, 30)
     return img1, img2
 
-def plot_epipolar(img1, img2, kp1_pts, kp2_pts):
+def plot_epipolar(img1, img2, kp1_pts, kp2_pts, plot_size=50):
+    if img1.ndim == 2:
+        img1 = np.stack([img1, img1, img1]).transpose(1, 2, 0) / 255
+        img2 = np.stack([img2, img2, img2]).transpose(1, 2, 0) / 255
     F, F_mask = cv2.findFundamentalMat(kp1_pts, kp2_pts)
+
+    rand_idxs = np.random.choice(range(len(kp1_pts)), size=plot_size)
+    kp1_pts, kp2_pts = kp1_pts[rand_idxs], kp2_pts[rand_idxs]
+    colors = np.random.rand(len(kp1_pts), 3)
 
     # Find epilines corresponding to points in right image (second image) and
     # drawing its lines on left image
     lines1 = cv2.computeCorrespondEpilines(kp2_pts.reshape(-1,1,2), 2, F)
     lines1 = lines1.reshape(-1,3)
-    img5, img6 = drawlines(img1, img2, lines1, kp1_pts, kp2_pts)
+    img5, img6 = drawlines(img1, img2, lines1, kp1_pts, kp2_pts, colors=colors)
 
     # Find epilines corresponding to points in left image (first image) and
     # drawing its lines on right image
     lines2 = cv2.computeCorrespondEpilines(kp1_pts.reshape(-1,1,2), 1,F)
     lines2 = lines2.reshape(-1,3)
-    img3, img4 = drawlines(img2, img1, lines2, kp2_pts, kp1_pts)
+    img3, img4 = drawlines(img2, img1, lines2, kp2_pts, kp1_pts, colors=colors)
 
-    plt.subplot(121),plt.imshow(img5)
-    plt.subplot(122),plt.imshow(img3)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    plt.suptitle('Epipolar Lines')
+    ax1.imshow(img5)
+    ax1.set_title('left image')
+    ax2.imshow(img3)
+    ax2.set_title('right image')
     plt.show()
 
 def rectify(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value=-1):
@@ -231,10 +242,10 @@ def rectify(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value=-1):
 
 def rectify_idxs(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value=-1):
     rows, cols = image.shape[:2]
-    image1_ri, image1_ci = np.meshgrid(range(cols), range(rows))
-    image1_npidxs = np.stack([image1_ri, image1_ci]).astype(np.int32).transpose(1, 2, 0)
-    rectified_npidxs = rectify(image1_npidxs, mapx, mapy, interpolation=cv2.INTER_NEAREST)
-    return rectified_npidxs
+    image1_ci, image1_ri = np.meshgrid(range(cols), range(rows))
+    image1_xys = np.stack([image1_ci, image1_ri]).astype(np.int32).transpose(1, 2, 0)
+    rectified_xys = rectify(image1_xys, mapx, mapy, interpolation=cv2.INTER_NEAREST)
+    return rectified_xys
 
 def plot_rectified_img(rectified1, rectified2):
     if len(rectified1.shape) == 3:
@@ -246,8 +257,12 @@ def plot_rectified_img(rectified1, rectified2):
     img[:rows, :cols] = rectified1.copy()
     img[:rows, cols:] = rectified2.copy()
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    ax.imshow(img)
+    fig, ax = plt.subplots(1, 1, figsize=(10, 4))
+    ax.set_title("Rectification Result")
+    if len(img.shape) == 2:
+        ax.imshow(img, cmap='gray')
+    else:
+        ax.imshow(img)
     for y in np.arange(0, rows, 100):
         ax.axhline(y=y, color=np.random.rand(3), linestyle='-', linewidth=0.5)
     plt.show()

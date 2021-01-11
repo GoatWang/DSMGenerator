@@ -1,92 +1,385 @@
 import cv2
-def get_disparity_map(rectified1_gray, rectified2_gray, min_disparity=-256, num_disparities=256, block_size=5, disp12_max_diff=-1):
-    # https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html?highlight=disparity#StereoSGBM::StereoSGBM%28int%20minDisparity,%20int%20numDisparities,%20int%20SADWindowSize,%20int%20P1,%20int%20P2,%20int%20disp12MaxDiff,%20int%20preFilterCap,%20int%20uniquenessRatio,%20int%20speckleWindowSize,%20int%20speckleRange,%20bool%20fullDP%29
-    # https://stackoverflow.com/questions/33688997/how-to-define-the-parameter-numdisparities-in-stereosgbm
-    # https://github.com/guimeira/stereo-tuner
-    stereo = cv2.StereoSGBM_create(minDisparity=min_disparity, numDisparities=num_disparities, blockSize=block_size, disp12MaxDiff=disp12_max_diff)
-    # stereo = cv2.StereoSGBM_create(minDisparity=min_disparity, numDisparities=num_disparities, blockSize=block_size, P1=8*3*blockSize*blockSize, p2=32*3*blockSize*blockSize)
-    disparity = stereo.compute(rectified1_gray, rectified2_gray)
-    return disparity
+import numpy as np
+from scipy.ndimage.filters import *
+from scipy.sparse import diags
+from skimage import img_as_float, img_as_ubyte
+from skimage.io import imread, imsave
+from skimage.color import rgb2gray
+from skimage.transform import rescale
+from skimage.util import view_as_windows
+import matplotlib.pyplot as plt
+from numba import jit
 
 
-if __name__ =='__main__':
-    import os 
-    import cv2
-    import numpy as np
-    import TronGisPy as tgp
-    import numpy.lib.recfunctions as nlr
-    from matplotlib import pyplot as plt
-    from io_aereo_params import get_DMC_aereo_params
-    from TiePoints import find_tie_points_grids, plot_kp_lines, filter_tie_points_by_PQ_dist
-    from Rectification import get_rectify_param, rectify, plot_rectified_img, plot_epipolar, rectify_idxs
+def str_comma(number):
+    """
+    Create a string from a number and replace all dots by a comma
+      
+        @param number: any number that should be converted to a string
 
-    # get fp
-    testdata_dir = os.path.join('Data', 'testcase3')
-    img_fp1 = os.path.join(testdata_dir, '071021h_53_0042_refined.tif') # os.path.join(testdata_dir, "071021h_53~0042_hr4.tif")
-    img_fp2 = os.path.join(testdata_dir, '071021h_53_0043_refined.tif') # os.path.join(testdata_dir, "071021h_53~0043_hr4.tif")
-    aereo_params_fp1 = os.path.join(testdata_dir, '071021h_53_0042_refined.pkl')
-    aereo_params_fp2 = os.path.join(testdata_dir, '071021h_53_0043_refined.pkl')
+        @return:       a string of the number with 2 decimals where all dots are replaced by commas
+    """
 
-    # read data
-    ras1 = tgp.read_raster(img_fp1)
-    ras2 = tgp.read_raster(img_fp2)
-    aereo_params1 = get_DMC_aereo_params(aereo_params_fp1, ras1.shape)
-    aereo_params2 = get_DMC_aereo_params(aereo_params_fp2, ras2.shape)
+    return str(round(number, 2)).replace('.',',')
+
+
+def export_img(export_image, name, error_measure, matching_method, D, R, accX = 0):
+    """
+    Export image to disk with an approriate file name
+      
+        @param export_image:    the image data that has to be exported as numpy array
+        @param name:            name and sub-directory of the image
+        @param error_measure:   the error measure used (e.g. SSD, SAD, NCC)
+        @param matching_method: the measure used for matching point (e.g. WTA, SGM)
+        @param D:               maximum disparity
+        @param R:               filter radius
+        @param accX:            accX measure for evaluation (if available)
+
+        @return:                none
+    """
+
+    filename = name + "_" + error_measure + "_" + matching_method + "_D" + str_comma(D) + "_R" + str_comma(R)
+
+    if accX != 0:
+        filename += "_accX" + str_comma(accX)
+
+    imsave(filename + ".jpg", img_as_ubyte(export_image), quality = 100)
+    return
+        
+
+def normalise_img(image, groundtruth_image = None):
+    """
+    Normalise image with ground truth to floating number points in interval 0..1
+      
+        @param image:             non-normalised image
+        @param groundtruth_image: ground-truth
+
+        @return:                  image normalised with ground truth or maximimum distance
+    """
     
-    # preprocessing
-    img1_norm = tgp.Normalizer().fit_transform(ras1.data[:, :, :3], clip_percentage=(0.1, 0.9))
-    img2_norm = tgp.Normalizer().fit_transform(ras2.data[:, :, :3], clip_percentage=(0.1, 0.9))
-    img1 = (tgp.Normalizer().fit_transform(ras1.data[:, :, [2, 1, 0]]) * 255).astype(np.uint8)
-    img2 = (tgp.Normalizer().fit_transform(ras2.data[:, :, [2, 1, 0]]) * 255).astype(np.uint8)
-    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    if groundtruth_image is not None:
+        assert(np.max(groundtruth_image) > 0)
+        image = image/np.max(groundtruth_image)
 
-    # find tie points & filter tie points
-    kp1_pts, kp2_pts = find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=700, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
-    dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=5)
-
-    # rectify image
-    mapx1, mapy1, mapx2, mapy2 = get_rectify_param(gray1.shape, kp1_pts, kp2_pts, shearing=True)
-    rectified1 = rectify(img1, mapx1, mapy1, border_value=0)
-    rectified2 = rectify(img2, mapx2, mapy2, border_value=0)
-    rectified1_norm = rectify(img1_norm, mapx1, mapy1, border_value=0)
-    rectified2_norm = rectify(img2_norm, mapx2, mapy2, border_value=0)
-
-    # rectify image index
-    rectified_npidxs1 = rectify_idxs(img1, mapx1, mapy1, border_value=-1)
-    rectified_npidxs2 = rectify_idxs(img2, mapx2, mapy2, border_value=-1)
-
-    # kp1_idx_tuple = nlr.unstructured_to_structured(kp1_pts.astype(np.int)).astype('O')
-    # rec_idx_tuple = nlr.unstructured_to_structured(rectified_npidxs1.reshape(-1, 2)).astype('O')
-    # cand_npidxs = set(kp1_idx_tuple) & set(rec_idx_tuple)
+    assert(np.max(image) > 0)
+    return image/np.max(image)
 
 
-    # disparity_map
-    # disparity = get_disparity_map(rectified1, rectified2)
-    # plt.hist(disparity.flatten())
-    # plt.show()
+def compute_wta(cv):
+    '''
+    Compute the best disparity on a scan line using winner-takes-it-all
+        
+        @param cv: a given cost volume (H,W,D)
+        
+        @return    a disparity image (H,W)
+    '''
+    
+    assert(cv.ndim == 3)
+    return np.argmin(cv, axis=2)
 
-    fig, axes = plt.subplots(2, 5, figsize=(10, 20))
-    for i, min_disparity in enumerate([-64, -128, -256, -384, -512]):
-        disparity = get_disparity_map(rectified1, rectified2, min_disparity=min_disparity)
-        axes[0][i].imshow(disparity, cmap='gray')
-        axes[0][i].set_title("md" + str(min_disparity))
-        axes[0][i].axis('off')
-    for i, num_disparities in enumerate([64, 128, 256, 384, 512]):
-        disparity = get_disparity_map(rectified1, rectified2, num_disparities=num_disparities)
-        axes[1][i].imshow(disparity, cmap='gray')
-        axes[1][i].set_title("nd" + str(num_disparities))
-        axes[1][i].axis('off')
-    plt.show()
 
-    # # fig, axes = plt.subplots(3, 5, figsize=(10, 100))
-    # # for i, num_disparities in enumerate([32, 64, 128]):
-    # #     for j, block_size in enumerate([5, 9, 13, 15, 19]):
-    # #         disparity = get_disparity_map(rectified1, rectified2, num_disparities=num_disparities, block_size=block_size)
-    # #         axes[i, j].imshow(disparity, cmap='gray')
-    # #         axes[i, j].set_title("b" + str(block_size) + "_d" + str(num_disparities))
-    # #         axes[i, j].axis('off')
-    # # plt.show()
+def compute_accX(prediction_image, groundtruth_image, mask_image, X = 3):
+    '''
+    Compute the accX accuracy measure [0..1]
+        
+        @param prediction_image:  the stereo image as reconstructed by an algorithm
+        @param groundtruth_image: the ground truth stereo image
+        @param mask_image:        the mask for excluding invalid pixels such as occluded areas
+        @param X:                 threshold disparity measure
+        
+        @return                   the accX measure of the reconstructed stereo image
+    '''
+    
+    Z = np.sum(mask_image)
+    assert(Z > 0)
+    assert(prediction_image.shape == groundtruth_image.shape == mask_image.shape)
+    
+    mask_rel = mask_image*(np.absolute(prediction_image - groundtruth_image) <= X)
+    return 1/Z*np.sum(mask_rel)
 
-    # # axes[-1].imshow(cv2.addWeighted(rectified1_norm, 0.5, rectified2_norm, 0.5, 0))
 
+@jit(nopython = True, parallel = True, cache = True)
+def compute_costvolume_sad(left_image, right_image, D=16, R=1):
+    """
+    Compute a cost volume with maximum disparity D considering a neighbourhood R with Sum of Absolute Differences (SAD)
+
+        @param left_image:       left input image of size (H,W)
+        @param right_image:      right input image of size (H,W)
+        @param M:                minimum disparity (may be negative)
+        @param D:                maximum disparity to be considered
+        @param R:                radius of the filter
+
+        @return:            cost volume of size (H,W,D)
+    """
+    
+    assert(left_image.shape == right_image.shape)
+    assert(D > 0)
+    assert(R > 0)
+    
+    (H,W) = left_image.shape
+    cv    = np.zeros((H,W,D))
+    
+    # Loop over internal image
+    for y in range(R, H - R):
+        for x in range(R, W - R):
+            
+            # Loop over window
+            for v in range(-R, R + 1):
+                for u in range(-R, R + 1):
+                    
+                    # Loop over all possible disparities
+                    for d in range(0, D):
+                        cv[y,x,d] += np.absolute(left_image[y+v, x+u] - right_image[y+v, x+u-d])
+        
+    return cv
+
+
+@jit(nopython = True, parallel = True, cache = True)
+def compute_costvolume_ssd(left_image, right_image, M=0, D=16, R=1):
+    """
+    Compute a cost volume with maximum disparity D considering a neighbourhood R with Sum of Squared Differences (SSD)
+    
+        @param left_image:  left input image of size (H,W)
+        @param right_image: right input image of size (H,W)
+        @param M:           minimum disparity (may be negative)
+        @param D:           maximum disparity
+        @param R:           radius of the filter
+    
+        @return:            cost volume of size (H,W,D)
+    """
+    
+    assert(left_image.shape == right_image.shape)
+    assert(D > 0)
+    assert(R > 0)
+    
+    (H,W) = left_image.shape
+    cv    = np.zeros((H,W,D))
+    
+    # Loop over internal image
+    for y in range(R, H - R):
+        for x in range(R, W - R):
+            
+            # Loop over window
+            for v in range(-R, R + 1):
+                for u in range(-R, R + 1):
+                    
+                    # Loop over all possible disparities
+                    for d in range(0, D):
+                        cv[y,x,d] += (left_image[y+v, x+u] - right_image[y+v, x+u-d])**2
+        
+    return cv
+
+
+@jit(nopython = True, parallel = True, cache = True)
+def compute_costvolume_ncc(left_image, right_image, M=0, D=16, R=1):
+    """
+    Compute a cost volume with maximum disparity D considering a neighbourhood R with Normalized Cross Correlation (NCC)
+    
+        @param left_image:  left input image of size (H,W)
+        @param right_image: right input image of size (H,W)
+        @param M:           minimum disparity (may be negative)
+        @param D:           maximum disparity
+        @param R:           radius of the filter
+        
+        @return:            cost volume of size (H,W,D)
+    """
+    
+    assert(left_image.shape == right_image.shape)
+    assert(D > 0)
+    assert(R > 0)
+    
+    (H,W) = left_image.shape
+    cv    = np.zeros((D,H,W))
+    
+    # Loop over all possible disparities
+    for d in range(0, D):
+        
+        # Loop over image
+        for y in range(R, H - R):
+            for x in range(R, W - R):
+                
+                l_mean = 0
+                r_mean = 0
+                n      = 0
+                
+                # Loop over window
+                for v in range(-R, R + 1):
+                    for u in range(-R, R + 1):
+                        
+                        # Calculate cumulative sum
+                        l_mean += left_image[y+v, x+u]
+                        r_mean += right_image[y+v, x+u-d]
+                        n      += 1
+
+                l_mean = l_mean/n
+                r_mean = r_mean/n
+                
+                l_r   = 0
+                l_var = 0
+                r_var = 0
+            
+                for v in range(-R, R + 1):
+                    for u in range(-R, R + 1):
+                        
+                        # Calculate terms
+                        l = left_image[y+v, x+u]    - l_mean
+                        r = right_image[y+v, x+u-d] - r_mean
+                        
+                        l_r   += l*r
+                        l_var += l**2
+                        r_var += r**2
+                        
+                        
+                # Assemble terms
+                cv[d,y,x] = -l_r/(np.sqrt(l_var*r_var) + 10**-6)
+    
+    return np.transpose(cv, (1, 2, 0))
+
+def get_f(D, L1=0.025, L2=0.5):
+    """
+    Get pairwise cost matrix for semi-global matching
+    
+        @param D:  disparities, number of possible choices
+        @param L1: parameter for setting cost for jumps between two layers of depth
+        @param L2: cost for jumping more than one layer of depth
+    
+        @return: pairwise_costs of shape (D,D)
+    """
+    
+    return np.full((D, D), L2) + diags([L1 - L2, -L2, L1 - L2], [-1, 0, 1], (D, D)).toarray()
+
+
+@jit(nopython = True, parallel = True, cache = True)
+def compute_message(cv, f):
+    """
+    Compute the messages in one particular direction for semi-global matching
+    
+        @param cv: cost volume of shape (H,W,D)
+        @param f:  pairwise costs of shape (D,D)
+    
+        @return:   messages for all H in positive direction of W with possible options D (H,W,D)
+    """
+    
+    (H,W,D) = cv.shape
+    mes     = np.zeros((H,W,D))
+
+    # Loop over passive direction
+    for y in range(0, H):
+        
+        # Loop over forward direction
+        for x in range(0, W - 1):
+            
+            # Loop over all possible nodes
+            for t in range(0, D):
+                
+                # Loop over all possible connections
+                buffer = np.zeros(D)
+                for s in range(0, D):
+                    # Input messages + unary cost + binary cost
+                    buffer[s] = mes[y,x,s] + cv[y,x,s] + f[t,s]
+                
+                # Choose path of least effort
+                mes[y, x+1, t] = np.min(buffer)
+                
+    return mes
+    
+
+def compute_sgm(cv, f):
+    """
+    Compute semi-global matching by message passing in four directions
+    
+        @param cv: cost volume of shape (H,W,D)
+        @param f:  pairwise costs of shape (H,W,D,D)
+    
+        @return:   pixel-wise disparity map of shape (H,W)
+    """
+    # Messages for every single spatial direction and collect in single message
+    (H,W,D) = cv.shape
+    mes     = np.zeros((H,W,D))
+    
+    # Positive W
+    mes += compute_message(cv, f)
+    
+    # Negative W
+    mes_buffer  = np.zeros((H,W))
+    mes_buffer  = compute_message(np.flip(cv, axis=1), f)
+    mes        += np.flip(mes_buffer, axis=1)
+    
+    # Positive H
+    mes_buffer  = compute_message(np.transpose(cv, (1, 0, 2)), f)
+    mes        += np.transpose(mes_buffer, (1, 0, 2))
+    
+    # Negative H
+    mes_buffer  = compute_message(np.flip(np.transpose(cv, (1, 0, 2)), axis=1), f)
+    mes        += np.transpose(np.flip(mes_buffer, axis=1), (1, 0, 2))
+    
+    # Choose best believe from all messages
+    disp_map = np.zeros((H,W))
+    for y in range(0, H):
+        for x in range(0, W):
+            # Minimum argument of unary cost and messages
+            disp_map[y,x] = np.argmin(cv[y,x,:] + mes[y,x,:])
+    
+    return disp_map
+
+
+# TODO: test the function
+def compute_disparity(left_image, right_image, cost='ssd', agg='sgm', M=0, D=16, R=1, L1=0.025, L2=0.5):
+    """
+    cost: {'sad', 'ssd', 'ncc'}
+    agg: {'wta', 'sgm'}
+    """
+    assert cost in {'sad', 'ssd', 'ncc'}, "cost should be in {'sad', 'ssd', 'ncc'}"
+    assert agg in {'wta', 'sgm'}, "cost should be in {'wta', 'sgm'}"
+    rows, cols = right_image.shape
+    rot = np.float32([[1, 0, -M], [0, 1, 0]])
+    right_image = cv2.warpAffine(right_image, rot, (cols,rows))
+
+    if cost == 'sad':
+        cv = compute_costvolume_sad(left_image, right_image, D=D, R=R)
+    elif cost == 'ssd':
+        cv = compute_costvolume_ssd(left_image, right_image, D=D, R=R)
+    elif cost == 'ncc':
+        cv = compute_costvolume_ncc(left_image, right_image, D=D, R=R)
+
+    if agg == 'wta':
+        disp_map = compute_wta(cv)
+    elif agg == 'sgm':
+        f = get_f(D, L1=L1, L2=L2)
+        disp_map = compute_sgm(cv, f)
+
+    disp_map += M
+    return disp_map.astype(np.int16)
+    
+    
+# def main():
+#     # Load input images
+#     im0 = imread("data/Adirondack_left.png")
+#     im1 = imread("data/Adirondack_right.png")
+
+#     im0g = rgb2gray(im0)
+#     im1g = rgb2gray(im1)
+
+#     # Plot input images
+#     plt.figure(figsize=(8,4))
+#     plt.subplot(1,2,1), plt.imshow(im0g, cmap='gray'), plt.title('Left')
+#     plt.subplot(1,2,2), plt.imshow(im1g, cmap='gray'), plt.title('Right')
+#     plt.tight_layout()
+
+#     # Use either SAD, NCC or SSD to compute the cost volume
+#     cv = compute_costvolume_ncc(im0g, im1g, 64, 5)
+
+#     # Compute pairwise costs
+#     (H,W,D) = cv.shape
+#     f = get_f(D, 0.025, 0.5)
+#     # Compute SGM
+#     disp = compute_sgm(cv, f)
+
+#     # Plot result
+#     plt.figure()
+#     plt.imshow(disp)
+#     plt.show()
+
+
+# if __name__== "__main__":
+#     main()

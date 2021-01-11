@@ -143,8 +143,13 @@ def optimize_opk(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, OPK1_
         pxyz1, pxyz2, dists_ecu, dists_blk = cal_dist(vecs1, spts1, vecs2, spts2)
         dists_ecu_mean = tf.reduce_mean(dists_ecu)
         dists_blk_mean = tf.reduce_mean(dists_blk)
+        l_dist = tf.sqrt(tf.reduce_sum(tf.square(lxyz1 - lxyz2)))
+        loss_ecu = dists_ecu_mean + 1/l_dist
+        loss_blk = dists_blk_mean + 1/l_dist
         train_ecu_op = train(dists_ecu_mean, learning_rate)
         train_blk_op = train(dists_blk_mean, learning_rate)
+        train_ecu_ldist_op = train(loss_ecu, learning_rate)
+        train_blk_ldist_op = train(loss_blk, learning_rate)
 #         ddist_dopk = tf.gradients(dists_ecu_mean, opk1)
 
         # run operation
@@ -162,13 +167,21 @@ def optimize_opk(aerotri_params1, aerotri_params2, kp1_npidxs, kp2_npidxs, OPK1_
 
         print("distance (init):", sess.run(dists_ecu_mean, feed_dict=feed_dict))
         non_zero_idx = None
+        l_dist_out = 0
         for step in range(training_steps):
             if non_zero_idx is None:
-                sess.run(train_ecu_op, feed_dict=feed_dict)
+                if l_dist_out > 0.1:
+                    sess.run(train_ecu_op, feed_dict=feed_dict)
+                else:
+                    sess.run(train_ecu_ldist_op, feed_dict=feed_dict)
             else:
-                sess.run(train_blk_op, feed_dict=feed_dict)
+                if l_dist_out > 0.1:
+                    sess.run(train_blk_op, feed_dict=feed_dict)
+                else:
+                    sess.run(train_blk_ldist_op, feed_dict=feed_dict)
+                
 
-            dists_ecu_out, dists_blk_out, dists_ecu_mean_out = sess.run([dists_ecu, dists_blk, dists_ecu_mean], feed_dict=feed_dict)
+            dists_ecu_out, dists_blk_out, dists_ecu_mean_out, l_dist_out = sess.run([dists_ecu, dists_blk, dists_ecu_mean, l_dist], feed_dict=feed_dict)
             if np.min(dists_ecu_out) == 0:
                 zero_idx = np.where(dists_ecu_out == 0)[0]
                 non_zero_idx = list(set(range(len(dists_ecu_out))) - set(zero_idx))

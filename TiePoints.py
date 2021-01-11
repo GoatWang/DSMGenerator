@@ -66,7 +66,7 @@ def find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, grid
     kp2s_pts = np.array(kp2s_pts)[kp2_paired_idxs]
     return kp1s_pts, kp2s_pts
 
-def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, gms=True, grids=(1, 1)):
+def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=300, gms=False, grids=(1, 1)):
     """split the image into grids to find the descriptors to ensure the well distributed tie points.
     
     Parameters
@@ -133,7 +133,7 @@ def find_tie_points_stereo_grids(gray1, gray2, nfeatures=1000, topn_n_matches=30
     return kp1s_pts, kp2s_pts
 
 
-def find_tie_points_masks(gray1, gray2, mask1, mask2, nfeatures=1000, topn_n_matches=300, gms=True):
+def find_tie_points_masks(gray1, gray2, mask1, mask2, nfeatures=1000, topn_n_matches=300, gms=False):
     """split the image into grids to find the descriptors to ensure the well distributed tie points.
     
     Parameters
@@ -162,10 +162,10 @@ def find_tie_points_masks(gray1, gray2, mask1, mask2, nfeatures=1000, topn_n_mat
         column indices) of the tie point.
     """
 
-    orb = cv2.ORB_create(nfeatures, scaleFactor=2, patchSize=31, WTA_K=2)
+    # orb = cv2.ORB_create(nfeatures, scaleFactor=2, patchSize=31, WTA_K=2)
     # orb = cv2.AKAZE_create(nfeatures)
     # orb = cv2.ORB_create(nfeatures, scaleFactor=1.05, patchSize=101, WTA_K=4)
-    # orb = cv2.xfeatures2d.SIFT_create(nfeatures)
+    orb = cv2.xfeatures2d.SIFT_create(nfeatures)
     # orb = cv2.xfeatures2d.SURF_create(nfeatures)
     kp1, des1 = orb.detectAndCompute(gray1, mask1)
     kp2, des2 = orb.detectAndCompute(gray2, mask2)
@@ -287,11 +287,15 @@ def find_tie_points_farest(gray1, gray2, nfeatures=6000, k_for_knn=20, topn_n_ma
     kp1_pts, kp2_pts = np.array(kp1_paired_pts), np.array(kp2_paired_pts)
     return kp1_pts, kp2_pts
 
-def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, texts_left=None, texts_right=None, fontsize=8, colors=None, figsize=(30, 30)):
+def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, texts_left=None, texts_right=None, fontsize=8, colors=None, figsize=(30, 30), ax=None):
+    no_ax = ax is None
     img = np.concatenate([img1_rgb, img2_rgb], axis=1)
     kp2_pts = np.array(kp2_pts)
     kp2_pts[:, 0] += img1_rgb.shape[1]
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    if no_ax:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
     if len(img1_rgb.shape) == 2:
         ax.imshow(img, cmap='gray')
     else:
@@ -307,7 +311,9 @@ def plot_kp_lines(img1_rgb, kp1_pts, img2_rgb, kp2_pts, texts_left=None, texts_r
             ax.text(kp1_pt[0]-100, kp1_pt[1], texts_left[idx], fontsize=fontsize)
         if texts_right is not None:
             ax.text(kp2_pt[0], kp2_pt[1], texts_right[idx], fontsize=fontsize)
-    plt.show()
+
+    if no_ax:
+        plt.show()
 
 def plot_kp_lines_img1(img1_rgb, kp1_pts, kp2_pts, colors=None, figsize=(30, 30)):
     fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -322,7 +328,6 @@ def plot_kp_lines_img1(img1_rgb, kp1_pts, kp2_pts, colors=None, figsize=(30, 30)
         c = colors[idx] if colors is not None else np.random.rand(3)
         ax.plot((kp1_pt[0], kp2_pt[0]), (kp1_pt[1], kp2_pt[1]), c=c, linewidth=0.5)
     plt.show()
-
 
 def get_dist_from_tie_points(aereo_params1, aereo_params2, kp1_pts, kp2_pts):
     kp1_pts_npidxs = np.array([kp1_pts[:, 1], kp1_pts[:, 0]]).T
@@ -373,7 +378,16 @@ def filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts,
     return dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu
 
 
-def plot_aero_triangulation(aereo_params1, aereo_params2, pxyz1, pxyz2, colors=None, scale_img=10):
+def plot_aero_triangulation(aereo_params1, aereo_params2, pxyz1, pxyz2, ax=None, colors=None, scale_img=10, title='AeroTriangulation of Both Images'):
+    """
+    create your own ax:
+        ```
+        fig = plt.figure(figsize=(10, 10))
+        plt.suptitle(title)
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        ```
+    """
+    no_ax = ax is None
     from mpl_toolkits.mplot3d import Axes3D
     OPK1, L_XYZ1, ROWS1, COLS1, FOCAL_LENGTH1, PIXEL_SIZE1, XOFFSET1, YOFFSET1 = aereo_params1
     OPK2, L_XYZ2, ROWS2, COLS2, FOCAL_LENGTH2, PIXEL_SIZE2, XOFFSET2, YOFFSET2 = aereo_params2
@@ -382,24 +396,29 @@ def plot_aero_triangulation(aereo_params1, aereo_params2, pxyz1, pxyz2, colors=N
     P_XYZs1 = project_npidxs_to_XYZs_by_k(npidxs, aereo_params1, k=1/scale_img)
     P_XYZs2 = project_npidxs_to_XYZs_by_k(npidxs, aereo_params1, k=1/scale_img)
 
-    fig = plt.figure(figsize=(20, 10))
-    ax1 = fig.add_subplot(1, 1, 1, projection='3d')
+    if no_ax:
+        fig = plt.figure(figsize=(10, 10))
+        plt.suptitle(title)
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+
     XYZ1 = (P_XYZs1[[0,1,3,2], :].reshape(2, 2, -1).transpose(2, 0, 1) / 1000) * scale_img
     XYZ2 = (P_XYZs2[[0,1,3,2], :].reshape(2, 2, -1).transpose(2, 0, 1) / 1000) * scale_img
-    ax1.plot_surface(*XYZ1, alpha=0.3)
-    ax1.plot_surface(*XYZ2, alpha=0.3)
+    ax.plot_surface(*XYZ1, alpha=0.3)
+    ax.plot_surface(*XYZ2, alpha=0.3)
 
     for idx, (p1, p2) in enumerate(zip(pxyz1, pxyz2)):
         c = colors[idx] if colors is not None else np.random.rand(3)
-        ax1.plot([L_XYZ1[0], p1[0]], [L_XYZ1[1], p1[1]], zs=[L_XYZ1[2], p1[2]], color=c, linewidth=1)
-        ax1.plot([L_XYZ2[0], p1[0]], [L_XYZ2[1], p2[1]], zs=[L_XYZ2[2], p2[2]], color=c, linewidth=1)
+        ax.plot([L_XYZ1[0], p1[0]], [L_XYZ1[1], p1[1]], zs=[L_XYZ1[2], p1[2]], color=c, linewidth=1)
+        ax.plot([L_XYZ2[0], p1[0]], [L_XYZ2[1], p2[1]], zs=[L_XYZ2[2], p2[2]], color=c, linewidth=1)
 
-    ax1.scatter([L_XYZ1[0]], [L_XYZ1[1]], [L_XYZ1[2]], color='red')
-    ax1.scatter([L_XYZ2[0]], [L_XYZ2[1]], [L_XYZ2[2]], color='blue')
-    ax1.set_xlabel('x')
-    ax1.set_ylabel('y')
-    ax1.set_zlabel('z')
-    plt.show()
+    ax.scatter([L_XYZ1[0]], [L_XYZ1[1]], [L_XYZ1[2]], color='red')
+    ax.scatter([L_XYZ2[0]], [L_XYZ2[1]], [L_XYZ2[2]], color='blue')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+
+    if no_ax:
+        plt.show()
 
 if __name__ =='__main__':
     import os 
