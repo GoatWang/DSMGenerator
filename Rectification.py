@@ -177,8 +177,7 @@ def get_rectify_param(img_shape, kp1_pts, kp2_pts, K=np.eye(3), d=None, shearing
     # axes[4].imshow(mapx2[:, :, 1], cmap='gray')
     # axes[5].imshow(mapy2, cmap='gray')
     # plt.show()
-
-    return mapx1, mapy1, mapx2, mapy2
+    return H1, H2, mapx1, mapy1, mapx2, mapy2
 
 def drawlines(img1, img2, lines, pts1, pts2, colors=None):
     ''' img1 - image on which we draw the epilines for the points in img2
@@ -191,20 +190,22 @@ def drawlines(img1, img2, lines, pts1, pts2, colors=None):
         color = np.random.rand(3) if colors is None else colors[idx]
         x0, y0 = map(int, [0, -r[2]/r[1] ])
         x1, y1 = map(int, [c, -(r[2]+r[0]*c)/r[1] ])
-        img1 = cv2.line(img1, (x0,y0), (x1,y1), color, 8, cv2.LINE_AA)
-        img1 = cv2.circle(img1, tuple(pt1), 8, color, 30)
-        img2 = cv2.circle(img2, tuple(pt2), 8, color, 30)
+        img1 = cv2.line(img1, (x0,y0), (x1,y1), color, 2, cv2.LINE_AA)
+        img1 = cv2.circle(img1, tuple(pt1), 3, color, 30)
+        img2 = cv2.circle(img2, tuple(pt2), 3, color, 30)
     return img1, img2
 
-def plot_epipolar(img1, img2, kp1_pts, kp2_pts, plot_size=50):
+def plot_epipolar(img1, img2, kp1_pts, kp2_pts, plot_size=None):
     if img1.ndim == 2:
         img1 = np.stack([img1, img1, img1]).transpose(1, 2, 0) / 255
         img2 = np.stack([img2, img2, img2]).transpose(1, 2, 0) / 255
     F, F_mask = cv2.findFundamentalMat(kp1_pts, kp2_pts)
 
-    rand_idxs = np.random.choice(range(len(kp1_pts)), size=plot_size)
-    kp1_pts, kp2_pts = kp1_pts[rand_idxs], kp2_pts[rand_idxs]
+    if plot_size is not None:
+        rand_idxs = np.random.choice(range(len(kp1_pts)), size=plot_size)
+        kp1_pts, kp2_pts = kp1_pts[rand_idxs], kp2_pts[rand_idxs]
     colors = np.random.rand(len(kp1_pts), 3)
+    colors = colors * 255 if img1.dtype == np.uint8 else colors
 
     # Find epilines corresponding to points in right image (second image) and
     # drawing its lines on left image
@@ -218,7 +219,7 @@ def plot_epipolar(img1, img2, kp1_pts, kp2_pts, plot_size=50):
     lines2 = lines2.reshape(-1,3)
     img3, img4 = drawlines(img2, img1, lines2, kp2_pts, kp1_pts, colors=colors)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 10))
     plt.suptitle('Epipolar Lines')
     ax1.imshow(img5)
     ax1.set_title('left image')
@@ -240,6 +241,24 @@ def rectify(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value=-1):
                         borderValue=border_value)
     return rectified
 
+def rectify_kps(kps, H):
+    """
+    kps = [(x1, y1), (x2, y2), (x3, y3), ...]
+    """
+    kps = np.hstack([kps, np.ones((len(kps), 1))])
+    kps_rectified = np.dot(H, kps.T).T
+    kps_rectified /= np.tile(kps_rectified[:, 2], (3, 1)).T
+    return kps_rectified[:, :2]
+
+def unrectify_kps(kps_rectified, H):
+    """
+    kps_rectified = [(x1, y1), (x2, y2), (x3, y3), ...]
+    """
+    kps_rectified = np.hstack([kps_rectified, np.ones((len(kps_rectified), 1))])
+    kps_ori = np.dot(np.linalg.inv(H), kps_rectified.T).T
+    kps_ori /= np.tile(kps_ori[:, 2], (3, 1)).T
+    return kps_ori[:, :2]
+
 def rectify_idxs(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value=-1):
     rows, cols = image.shape[:2]
     image1_ci, image1_ri = np.meshgrid(range(cols), range(rows))
@@ -247,7 +266,7 @@ def rectify_idxs(image, mapx, mapy, interpolation=cv2.INTER_LINEAR, border_value
     rectified_xys = rectify(image1_xys, mapx, mapy, interpolation=cv2.INTER_NEAREST)
     return rectified_xys
 
-def plot_rectified_img(rectified1, rectified2):
+def plot_rectified_img(rectified1, rectified2, line_interval=100):
     if len(rectified1.shape) == 3:
         rows, cols, bands = rectified1.shape
         img = np.empty((rows, cols*2, bands), dtype=rectified1.dtype)
@@ -263,7 +282,7 @@ def plot_rectified_img(rectified1, rectified2):
         ax.imshow(img, cmap='gray')
     else:
         ax.imshow(img)
-    for y in np.arange(0, rows, 100):
+    for y in np.arange(0, rows, line_interval):
         ax.axhline(y=y, color=np.random.rand(3), linestyle='-', linewidth=0.5)
     plt.show()
 
@@ -281,8 +300,7 @@ if __name__ =='__main__':
     import TronGisPy as tgp
     from matplotlib import pyplot as plt
     from io_aereo_params import get_DMC_aereo_params
-    from TiePoints import find_tie_points_grids, plot_kp_lines, filter_tie_points_by_PQ_dist
-    from Rectification import get_rectify_param, rectify, plot_rectified_img, plot_epipolar, rectify_idxs
+    from TiePoints import find_tie_points_grids, plot_kp_lines, filter_tie_points_by_PQ_dist, find_tie_points_grids_matching
 
     # get fp
     testdata_dir = os.path.join('Data', 'testcase3')
@@ -298,22 +316,20 @@ if __name__ =='__main__':
     aereo_params2 = get_DMC_aereo_params(aereo_params_fp2, ras2.shape)
     
     # preprocessing
-    img1_norm = tgp.Normalizer().fit_transform(ras1.data[:, :, :3], clip_percentage=(0.1, 0.9))
-    img2_norm = tgp.Normalizer().fit_transform(ras2.data[:, :, :3], clip_percentage=(0.1, 0.9))
-    img1 = (tgp.Normalizer().fit_transform(ras1.data[:, :, [2, 1, 0]]) * 255).astype(np.uint8)
-    img2 = (tgp.Normalizer().fit_transform(ras2.data[:, :, [2, 1, 0]]) * 255).astype(np.uint8)
+    img1 = (tgp.Normalizer().fit_transform_opencv(ras1.data[:, :, :3], clip_percentage=(0.1, 0.9), out_dtype=np.float64) * 255).astype(np.uint8)
+    img2 = (tgp.Normalizer().fit_transform_opencv(ras2.data[:, :, :3], clip_percentage=(0.1, 0.9), out_dtype=np.float64) * 255).astype(np.uint8)
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
     # find tie points & filter tie points
-    kp1_pts, kp2_pts = find_tie_points_grids(gray1, gray2, nfeatures=1000, topn_n_matches=700, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
+    kp1_pts, kp2_pts = find_tie_points_grids_matching(gray1, gray2, nfeatures=4000, topn_n_matches=300, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
     dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=5)
 
     # rectify image
-    mapx1, mapy1, mapx2, mapy2 = get_rectify_param(gray1.shape, kp1_pts, kp2_pts, shearing=True)
-    rectified1_norm = rectify(img1_norm, mapx1, mapy1, border_value=0)
-    rectified2_norm = rectify(img2_norm, mapx2, mapy2, border_value=0)
-    plot_epipolar(img1_norm, img2_norm, kp1_pts, kp2_pts)
+    H1, H2, mapx1, mapy1, mapx2, mapy2 = get_rectify_param(gray1.shape, kp1_pts, kp2_pts, shearing=True)
+    rectified1_norm = rectify(img1, mapx1, mapy1, border_value=0)
+    rectified2_norm = rectify(img2, mapx2, mapy2, border_value=0)
+    plot_epipolar(img1, img2, kp1_pts, kp2_pts)
     plot_rectified_img(rectified1_norm, rectified2_norm)
     plot_rectified_img2(rectified1_norm, rectified2_norm)
 
@@ -323,9 +339,9 @@ if __name__ =='__main__':
     rectified_npidxs1_show = tgp.Normalizer().fit_transform(rectified_npidxs1[:, :, 0] * rectified_npidxs1[:, :, 1])
     rectified_npidxs2_show = tgp.Normalizer().fit_transform(rectified_npidxs2[:, :, 0] * rectified_npidxs2[:, :, 1])
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    ax1.imshow(rectified_npidxs1_show, cmap='gray')
-    ax2.imshow(rectified_npidxs2_show, cmap='gray')
-    plt.show()
+    # fig, (ax1, ax2) = plt.subplots(1, 2)
+    # ax1.imshow(rectified_npidxs1_show, cmap='gray')
+    # ax2.imshow(rectified_npidxs2_show, cmap='gray')
+    # plt.show()
 
 
