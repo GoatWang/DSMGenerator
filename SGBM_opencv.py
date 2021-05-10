@@ -275,7 +275,7 @@ if __name__ =='__main__':
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
     # find tie points & filter tie points
-    kp1_pts, kp2_pts = find_tie_points_grids_matching(gray1, gray2, nfeatures=4000, topn_n_matches=300, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
+    kp1_pts, kp2_pts = find_tie_points_grids_matching(gray1, gray2, nfeatures=400, topn_n_matches=100, grids=(3, 3)) # find_tie_points_farest(gray1, gray2)
     dep1, dep2, pxyz1, pxyz2, kp1_pts, kp2_pts, dists_ecu = filter_tie_points_by_PQ_dist(aereo_params1, aereo_params2, kp1_pts, kp2_pts, max_dist=5)
     plot_kp_lines(img1, kp1_pts, img2, kp2_pts, title="TiePoints", figsize=(10, 10))
     # fig, (ax1, ax2) = plt.subplots(1, 2)
