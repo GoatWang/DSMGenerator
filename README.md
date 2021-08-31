@@ -21,16 +21,16 @@ Please read the [review PPT](https://thinktronltdcorp-my.sharepoint.com/:x:/g/pe
     - ![TP_20](static/TP_20.png)
     - ![TP_21](static/TP_21.png)
     - ![TP_22](static/TP_22.png)
-    - ![TP_Filtered](static/TP_Filtered.png)
     - ![TP_unFiltered](static/TP_unFiltered.png)
+    - ![TP_Filtered](static/TP_Filtered.png)
     
 - Rectification.py: Rectify the image for application of SGBM reduce the searching dimension from two dimensions to one dimension.)
     ```
     python Rectification.py
     ```
-    - ![Rectification_Add](static/Rectification_Add.png)
     - ![Rectification_EpipolarLine](static/Rectification_EpipolarLine.png)
     - ![Rectification_Rectification](static/Rectification_Rectification.png)
+    - ![Rectification_Add](static/Rectification_Add.png)
 
 - SGBM_opencv.py: OpenCV version SGBM.
     ```
