@@ -476,8 +476,12 @@ if __name__ == '__main__':
 
 
     dt_str = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-    d = os.path.join('temp', '3d', dt_str)
-    os.mkdir(d)
+    temp_dir = os.path.join('temp')
+    threed_dir = os.path.join('temp', '3d')
+    current_dir = os.path.join(threed_dir, dt_str)
+    for d in [temp_dir, threed_dir, current_dir]:
+        if not os.path.exists(d):
+            os.mkdir(d)
     for angle in np.arange(0, 360, 5): # rotate the axes and update
         ax1.view_init(0, angle)
         ax2.view_init(0, angle)
