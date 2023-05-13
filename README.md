@@ -20,8 +20,6 @@ This repo aims to generate the 3D point cloud from two 2D images. All processes 
     | --- | --- | 
     |![RoadQuality_Source0](static/RoadQuality_Source0.jpg) | ![RoadQuality_Source1](static/RoadQuality_Source1.jpg) |
 
-        - ![RoadQuality_Source1](static/RoadQuality_Source1.jpg)
-
 2. Result
     - ![RoadQuality_Result](static/RoadQuality_Result.gif)
 
