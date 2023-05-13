@@ -11,20 +11,6 @@ This repo aims to generate the 3D point cloud from two 2D images. All processes 
 2. Result
     - ![SGBM_CloudPoint](static/SGBM_CloudPoint.png)
 
-## CASE2: Road Quality (Smoothness) Measurement: with hand-crafted processes
-1. Source 
-    - Video: 
-        - ![RoadQuality_Source](static/RoadQuality_Source4.gif)
-
-
-    - Images
-        | Left | Right |
-        | --- | --- | 
-        |![RoadQuality_Source0](static/RoadQuality_Source0.jpg) | ![RoadQuality_Source1](static/RoadQuality_Source1.jpg) |
-
-2. Result
-    - ![RoadQuality_Result](static/RoadQuality_Result.gif)
-
 # Theory
 Please see [Pinhole Camera Model PPT](https://docs.google.com/presentation/d/1d6rK1UMtkgI-SxBe5717WRXsQCkIL9Wc/edit?usp=sharing&ouid=110278970958064225979&rtpof=true&sd=true)
 
