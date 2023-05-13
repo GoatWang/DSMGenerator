@@ -2,11 +2,11 @@
 This repo aims to generate the 3D point cloud from two 2D images. All processes includes **Tie Point Finding**, **Rectification**, **Dense Matching** and **Point Cloud Generating**.
 
 # Result
-## CASE1: Ariel Image
+## CASE1: Aerial Image
 1. Source
     | Left | Right |
     | --- | --- | 
-    |![Ariel_Source_l](static/Ariel_Source_l.jpg) | ![Ariel_Source_r](static/Ariel_Source_r.jpg) |
+    |![Aerial_Source_l](static/Aerial_Source_l.jpg) | ![Aerial_Source_r](static/Aerial_Source_r.jpg) |
 
 2. Result
     - ![SGBM_CloudPoint](static/SGBM_CloudPoint.png)
@@ -16,9 +16,11 @@ This repo aims to generate the 3D point cloud from two 2D images. All processes 
     - Video: 
         - ![RoadQuality_Source](static/RoadQuality_Source4.gif)
 
-    | Left | Right |
-    | --- | --- | 
-    |![RoadQuality_Source0](static/RoadQuality_Source0.jpg) | ![RoadQuality_Source1](static/RoadQuality_Source1.jpg) |
+
+    - Images
+        | Left | Right |
+        | --- | --- | 
+        |![RoadQuality_Source0](static/RoadQuality_Source0.jpg) | ![RoadQuality_Source1](static/RoadQuality_Source1.jpg) |
 
 2. Result
     - ![RoadQuality_Result](static/RoadQuality_Result.gif)
