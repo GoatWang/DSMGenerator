@@ -1,11 +1,32 @@
 # Introduction
 This repo aims to generate the 3D point cloud from two 2D images. All processes includes **Tie Point Finding**, **Rectification**, **Dense Matching** and **Point Cloud Generating**.
 
+# Result
+## CASE1: Ariel Image
+1. Source
+    | Left | Right |
+    | --- | --- | 
+    |![Ariel_Source_l](static/Ariel_Source_l.jpg) | ![Ariel_Source_r](static/Ariel_Source_r.jpg) |
+
+2. Result
+    - ![SGBM_CloudPoint](static/SGBM_CloudPoint.png)
+
+## CASE2: Road Quality (Smoothness) Measurement: with hand-crafted processes
+1. Source 
+    - Video: 
+        - ![RoadQuality_Source](static/RoadQuality_Source4.gif)
+
+    | Left | Right |
+    | --- | --- | 
+    |![RoadQuality_Source0](static/RoadQuality_Source0.jpg) | ![RoadQuality_Source1](static/RoadQuality_Source1.jpg) |
+
+        - ![RoadQuality_Source1](static/RoadQuality_Source1.jpg)
+
+2. Result
+    - ![RoadQuality_Result](static/RoadQuality_Result.gif)
+
 # Theory
-Please read the [review PPT](https://thinktronltdcorp-my.sharepoint.com/:x:/g/personal/jeremywang_thinktronltd_com/ETIK0ORjyQNCmSK5ibZ328wBLHgwP2_2f6HOdkQlq_7mFA?e=5wNriE)from NTUST Meeting: 
-1. [SIFT and SURF](https://mailntustedutw-my.sharepoint.com/:p:/g/personal/m10907824_ms_ntust_edu_tw/ETqWfzYp1OxKlJFOXiICV_4BR3RhYM5LZzde4jxRnmaEZg?rtime=uRWe-yls2Ug)
-2. [FAST: BRIEF and ORB](https://mailntustedutw-my.sharepoint.com/:p:/g/personal/m10907824_ms_ntust_edu_tw/EeWTlCL3d95FrgEhn7VTMIkBY3AWOqo1heU1hZOs8Ma_Ww?e=s8NJLL)
-3. [Intrinsic Calibration: Zhang's Algorithm](https://mailntustedutw-my.sharepoint.com/:p:/g/personal/m10907824_ms_ntust_edu_tw/EdCgFJQMQrRElWuIc9XF76wBcZ9pvIiy2R4MOCWoJ8o7NQ?e=jmel33)
+Please see [Pinhole Camera Model PPT](https://docs.google.com/presentation/d/1d6rK1UMtkgI-SxBe5717WRXsQCkIL9Wc/edit?usp=sharing&ouid=110278970958064225979&rtpof=true&sd=true)
 
 # Scripts
 - TiePoints.py: Use SIFT, ORB and SURF to find the sparse matching point (same point in real world) from 2 images.
